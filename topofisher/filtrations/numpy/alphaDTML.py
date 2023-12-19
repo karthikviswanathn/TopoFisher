@@ -9,35 +9,72 @@ Created on Sun Jul  9 14:53:48 2023
 import numpy as np
 import gudhi
 from . import filtration_layers
+from gudhi.point_cloud.dtm import DistanceToMeasure
 
 class AlphaDTMLayer(filtration_layers.FiltrationLayer):
-    def __init__(self, m, edge_filt = "mixDTMandL", hom_dim = 2, \
+    def __init__(self, max_hom_dim, hom_dim_list, m = None, num_nn = None, 
+                 implementation = "sklearn", edge_filt = "mixDTMandL", \
                  name = "AlphaDTM", show_tqdm = False):
         """
         Initialize an AlphaDTMLayer for computing persistent homology using 
         AlphaDTM filtration.
 
         Parameters
-        ----------
-        m : float
+        ----------        
+        max_hom_dim : int
+            The homological dimension upto which to compute persistent homology.
+        hom_dim_list : list 
+            The list of homological dimensions to find the persistence
+            diagrams for. 
+        m : float, optional
             The fraction of nearest neighbors to consider for the AlphaDTM 
-            filtration.
+            filtration. Default is None
+        num_nn : int, optional
+                 The number of nearest neihbors to consider for the AlphaDTM 
+                 filtration. If m is not provided, then this number is used.
+                 Default is None.
+        implementation : str, optional
+            The method used to compute the DTM values. 
+            Default is "keops".
+            The possible options now are 
+            1. keops - Constructs the full distance matrix and 
+            2. sklearn - Uses sklearn to compute the k-nearest neighbors.
         edge_filt : str, optional
             The method for computing edge filtration values. 
             Default is "mixDTMandL".
-        hom_dim : int, optional
-            The homological dimension for which to compute persistent homology. 
-            Default is 2.
         name : str, optional
             The name of the filtration layer. Default is "AlphaDTM".
         show_tqdm : bool, optional
             A flag indicating whether to display a progress bar using tqdm. 
             Default is False.
         """
+        if m is None and num_nn is None : 
+            raise ValueError("Either provide 'm' or 'num_nn'!")
+        if m is not None and num_nn is not None:
+            raise ValueError("Provide either 'm' or 'num_nn'!")
+        self.num_nn = num_nn
         self.m = m    
         self.edge_filt = edge_filt
-        super().__init__(hom_dim, name, show_tqdm)
+        self.implementation = implementation
         
+        super().__init__(max_hom_dim, hom_dim_list, name, show_tqdm)
+        
+    def get_num_nn(self, N):
+        """
+        Finds the number of nearest neighbors to find the DTM.
+
+        Parameters
+        ----------
+        N : int
+            Total number of points in the point cloud.
+
+        Returns
+        -------
+        int
+            The number of nearest neighbors to find DTM.
+
+        """
+        return int(self.m * N) if self.num_nn is None else self.num_nn
     """
         Returns the simplex tree for a given point cloud (ptCloud). The simplex tree
         corresponds to an alphaDTM filtration for a given value of 'm'. This uses
@@ -74,13 +111,12 @@ class AlphaDTMLayer(filtration_layers.FiltrationLayer):
         # filtration values using AlphaDTM.
         
         vert = np.array([s[0] for s in st.get_skeleton(0)])
-        edges = np.array([s[0] for s in st.get_skeleton(1)\
-                          if len(s[0]) == 2])
+        edges = np.array([s[0] for s in st.get_skeleton(1) if len(s[0]) == 2])
         
-        num_nn = int(self.m * len(vert))
+        num_nn = self.get_num_nn(N = len(vert))
         
         # Finding vertex filtration values given by vfilt.
-        vfilt = calculateDTMValues(ptCloud, num_nn) 
+        vfilt = self.calculateDTMValues(ptCloud, num_nn) 
         
         # Finding the edge filtration values given by efilt.
         inda, indb = edges[:,0], edges[:,1]
@@ -98,33 +134,27 @@ class AlphaDTMLayer(filtration_layers.FiltrationLayer):
         st = gudhi.SimplexTree()
         st.insert_batch(vert.T, vfilt.reshape(-1))
         st.insert_batch(edges.T, efilt)
-        st.expansion(self.hom_dim) # hom_dim = 2 in this case
+        st.expansion(self.max_hom_dim) # max_hom_dim = 2 in this case
         st.make_filtration_non_decreasing()
         st.persistence()
         return st
     
-def calculateDTMValues(ptCloud, num_nn):
-    """
-    Calculate DTM (Distance to Measure) values for a given point cloud.
-    Here, DX is the euclidean distance matrix. To find the DTM values, we
-    1. Take the 'num_nn' closest neighbors from the distance matrix.
-    2. Find the "square root mean" (L2 norm) of these distances. 
-    The output of this is vfilt = vertex filtration values of the simplex 
-    tree.
-    Parameters:
-    ----------
-    ptCloud : numpy array
-        The input point cloud.
-    num_nn : int
-        The number of nearest neighbors to consider for DTM computation.
-
-    Returns:
-    -------
-    vfilt : numpy array
-        An array of vertex filtration values for the point cloud.
-    """
-    DX = np.linalg.norm(np.expand_dims(ptCloud, axis = -3) - \
-                        np.expand_dims(ptCloud, axis = -2), axis = -1)
-    DX = np.sort(DX, axis = -1)[:, :num_nn]
-    vfilt = np.sqrt(np.mean(DX*DX, axis = -1))
-    return vfilt
+    def calculateDTMValues(self, ptCloud, num_nn):
+        """
+        Calculate DTM (Distance to Measure) values for a given point cloud.
+        The output of this is vfilt = vertex filtration values of the simplex 
+        tree.
+        Parameters:
+        ----------
+        ptCloud : numpy array
+            The input point cloud.
+        num_nn : int
+            The number of nearest neighbors to consider for DTM computation.
+    
+        Returns:
+        -------
+        vfilt : numpy array
+            An array of vertex filtration values for the point cloud.
+        """
+        dtm = DistanceToMeasure(num_nn, implementation = self.implementation)
+        return dtm.fit_transform(ptCloud)

@@ -30,21 +30,23 @@ class FisherPipeline:
          delta_theta : tf.Tensor 
              Parameter step sizes to estimate the derivative mean. 
          filtLayer : Object inheriting class FiltrationLayer with the method
-                     find_simplex_trees().
+                     find_persistence_diagrams().
              Input - A list of data points from 'n' simulations.
-             Output - A list of 'n' simplex trees. 
-             A filtration layer that takes in a list of simulations, and 
-             outputs a list of corresponding simplex trees.
+             Output - A nested list with the first outer dimension correspoding
+                     to the hom_dims and the second outer dimension 
+                     corresponding to the 'n' simulations.                     
+             A filtration layer that takes in a list of simulations,
+             and outputs a list of corresponding persistence diagrams.
          vecLayer : Object inheriting class VectorizationLayer with the method
-                    vectorize_simplex_trees().
-             Input - A list of 'n' simplex trees. 
+                    vectorize_persistence_diagrams().
+             Input - A list of list of persistence diagrams
              Output - A list of 'n' persistent summaries.
-             A vectorization layer that takes in a list of simplex trees, and 
-             outputs a list of persistent summaries.
+             A vectorization layer that takes in a nested list of 
+             persistence diagrams, and outputs a list of persistent summaries.
          fisherLayer : Object inheriting class FisherLayer with the method 
                         computeFisher().
-             Input - A list of 'n' simplex trees. 
-             Output - A list of 'n' persistent summaries.
+             Input - A list of 'n' persistence summaries. 
+             Output - A Fisher.baseFisher object.
              A fisher analysis layer that takes in a list of summaries, and 
              outputs an object that contains the Fisher matrix, Fisher forecast
              bias, etc..
@@ -58,9 +60,12 @@ class FisherPipeline:
         self.n_s = n_s
         self.n_d = n_d
 
-        if(n_s != n_d) :
-            raise ValueError(
-                "$n_s != n_d$. Currently the pipeline doesn't support this.")
+# =============================================================================
+#         if(n_s != n_d) :
+#             raise ValueError(
+#                 "$n_s != n_d$. Currently the pipeline doesn't support this.")
+# =============================================================================
+
         self.theta_fid = theta_fid
 
         self.filtLayer = filtLayer
@@ -138,24 +143,24 @@ class FisherPipeline:
     def filter_input_data(self):
         """
         Perform persistent homology computations on the input data stored in 
-        the 'all_pts' and stores the corresponding simplex trees in 
-        the 'all_simplex_trees'. The filtration procedure is  
+        the 'all_pts' and stores the corresponding persistence diagrams in 
+        the 'all_persistence_diagrams'. The filtration procedure is  
         specifed by the 'filtLayer'.
         """
-        self.all_simplex_trees = []; 
+        self.all_persistence_diagrams = []; 
         for ptclouds in self.all_pts:
-            sts = self.filtLayer.find_simplex_trees(ptclouds)
-            self.all_simplex_trees.append(sts)
+            pds = self.filtLayer.find_persistence_diagrams(ptclouds)
+            self.all_persistence_diagrams.append(pds)
     
-    def vectorize_all_simplex_trees(self):
+    def vectorize_all_persistence_diagrams(self):
         """
-        Vectorizes the persistence diagrams from the 'all_simplex_trees' 
+        Vectorizes the persistence diagrams from the 'all_persistence_diagrams' 
         and stores the persistent summaries in the 'all_vecs'. 
         The vectorization procedure specified by the 'vecLayer'.
         """
         self.all_vecs = []; 
-        for sts in self.all_simplex_trees:
-            vecs = self.vecLayer.vectorize_simplex_trees(sts)
+        for pds in self.all_persistence_diagrams:
+            vecs = self.vecLayer.vectorize_persistence_diagrams(pds)
             self.all_vecs.append(vecs)
     
     def fisher_analysis(self):
@@ -163,8 +168,7 @@ class FisherPipeline:
         Performs the Fisher analysis on the 'all_vecs' according to 
         the specification given by the 'fisherLayer'.
         """
-        stacked_vecs = tf.stack(self.all_vecs)
-        self.fisher = self.fisherLayer.computeFisher(stacked_vecs, \
+        self.fisher = self.fisherLayer.computeFisher(self.all_vecs, \
                                                      self.delta_theta)
         
     def run_pipeline(self, seed_cov = None, seed_ders = None):
@@ -190,16 +194,37 @@ class FisherPipeline:
         """
         self.generate_input_data(seed_cov = seed_cov, seed_ders = seed_ders)
         self.filter_input_data()
-        if self.vecLayer is not None : self.vectorize_all_simplex_trees()
+        if self.vecLayer is not None : 
+            self.vectorize_all_persistence_diagrams()
         if self.vecLayer is None and self.fisherLayer is not None:
             raise ValueError(\
                         'Cannot perform Fisher Analysis without vectorizing.')
         if self.fisherLayer is not None : self.fisher_analysis()
-    
-    def vectorize_and_fisher(self, inpVecLayer, inpFisherLayer):
+    def vectorize(self, inpVecLayer):
         """
-        Vectorize the persistence diagrams in 'all_simplex trees' and perform 
-        Fisher analysis using custom vectorization and Fisher layers.
+        Vectorize the persistence diagrams in 'all_persistence_diagrams'
+
+        Parameters:
+        ----------
+        inpVecLayer : object
+            Custom vectorization layer object.
+
+        Returns
+        -------
+        all_vecs : list
+            List containing the vectorized representation of the persistence
+            diagrams.
+        """
+        all_vecs = []; 
+        for pds in self.all_persistence_diagrams:
+            vecs = inpVecLayer.vectorize_persistence_diagrams(pds)
+            all_vecs.append(vecs)
+        return all_vecs
+    
+    def vectorize_and_fisher(self, inpVecLayer, inpFisherLayer, stack = True):
+        """
+        Vectorize the persistence diagrams in 'all_persistence_diagrams' and 
+        perform Fisher analysis using custom vectorization and Fisher layers.
 
         Parameters:
         ----------
@@ -213,10 +238,7 @@ class FisherPipeline:
         fisher : Object of base class Fisher.
             Fisher matrix or analysis result.
         """
-        all_vecs = []; 
-        for sts in self.all_simplex_trees:
-            vecs = inpVecLayer.vectorize_simplex_trees(sts)
-            all_vecs.append(vecs)
-        stacked_vecs = tf.stack(all_vecs)
+        all_vecs = self.vectorize(inpVecLayer)
+        stacked_vecs = tf.stack(all_vecs) if stack else all_vecs
         fisher = inpFisherLayer.computeFisher(stacked_vecs, self.delta_theta)
         return fisher

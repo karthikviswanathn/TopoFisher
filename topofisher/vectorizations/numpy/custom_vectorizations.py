@@ -6,6 +6,8 @@ Created on Sun Jul 9 15:05:52 2023
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+import tqdm
+from tqdm import tqdm
 
 def _fit_topk_from_pds(self, X):
     """
@@ -75,7 +77,7 @@ class TOPK(BaseEstimator, TransformerMixin):
     Calculate top-k vectors from persistence diagrams.
     """
     def __init__(self, bdp_type, is_binned, topk=np.nan, reduce_frac=0.9, 
-                  num_bins=np.nan, pad_value=0.):
+                  num_bins=np.nan, pad_value=0., show_tqdm = False):
         """
         Initialize the TOPK class.
 
@@ -96,6 +98,7 @@ class TOPK(BaseEstimator, TransformerMixin):
         self.reduce_frac = reduce_frac
         self.num_bins = num_bins
         self.pad_value = pad_value
+        self.show_tqdm = show_tqdm
         
     def fit(self, X, y=None):
         """
@@ -132,7 +135,8 @@ class TOPK(BaseEstimator, TransformerMixin):
         """
         Xfit = []
         # Iterating over the list of persistence diagrams.
-        for pdx in X:
+        iter_obj = tqdm(X) if self.show_tqdm else X
+        for pdx in iter_obj:
             bdp_dic = {}
             pdx = np.array(pdx)
             if(pdx.shape[0] < self.topk) :

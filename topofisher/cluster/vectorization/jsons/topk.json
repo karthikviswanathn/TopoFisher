@@ -1,0 +1,11 @@
+{
+    "//first_comment": "Following are for the reference pd to fit the histogram",
+    "param_name": "fiducial",
+    "fid_start": 500,
+    "fid_end": 1000, 
+    "//second_comment": "Following are the parameters to define the histogram",  
+    "vectorization": "topk",
+    "bdp_types": ["bp", "bp", "bp"],
+    "num_bins": [100, 100, 100],
+    "show_tqdm": false
+}

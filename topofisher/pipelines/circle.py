@@ -46,6 +46,6 @@ class CirclePipeline(pipeline.FisherPipeline):
                                                          self.delta_theta)
         # Computing the Fisher forecast using by first sorting the distances to 
         # the center and compressing using MOPED. 
-        sorted_dists = tf.stack(self.inp_sim.sortedSummary(self.all_pts))
+        sorted_dists = tf.stack(self.inp_sim.sortedDistSummary(self.all_pts))
         self.benchmarks['SortedMOPED'] = fisherMOPED(sorted_dists, \
                                                      self.delta_theta)

@@ -19,7 +19,9 @@ from .Fisher import computeDerivatives, baseFisher
 def plot_derivative_convergence(summaries, delta_theta, parnames = None, \
                                 max_repeats = None):
     """
-    Plot the convergence of derivatives as a function of the number of splits.
+    Plot the convergence of Fisher forecasts keeping the covariance constant
+    as a function of the number of splits to test the convergence of 
+    derivatives.
     
     Parameters
     ----------
@@ -38,7 +40,7 @@ def plot_derivative_convergence(summaries, delta_theta, parnames = None, \
     
     # Number of simulations in the summary vectors    
     n_s = summaries[0].shape[0]
-
+    n_d = summaries[1].shape[0]
     # Number of parameters
     n_params = len(delta_theta)
 
@@ -61,13 +63,13 @@ def plot_derivative_convergence(summaries, delta_theta, parnames = None, \
         nRepeats  = int(1/s_frac)
 
         # Calculate the number of data points in each split
-        n_split = s_frac * n_s
+        n_split = s_frac * n_d
 
         # Limit the number of repeats if max_repeats is provided
         if max_repeats is not None: nRepeats = min(nRepeats, max_repeats)
         
         # Create an array of shuffled indices for data splitting
-        ids_all = np.arange(0, n_s)
+        ids_all = np.arange(0, n_d)
         np.random.shuffle(ids_all)
         
         # Perform the convergence analysis for the specified number of repeats
@@ -75,7 +77,7 @@ def plot_derivative_convergence(summaries, delta_theta, parnames = None, \
             ids_fish = ids_all[int(I*n_split):int((I+1)*n_split)]
             
             # Create shuffled derivative vectors
-            shuffled_ders = summaries.numpy()[1:, ids_fish]
+            shuffled_ders = np.stack(summaries[1:])[:, ids_fish]
             
             # Calculate derivatives from shuffled data
             derivatives = computeDerivatives(shuffled_ders, delta_theta)
@@ -190,7 +192,7 @@ def plotHists(vecs, axes, titles = None):
         ax.axvline(vec.numpy().mean(), c = 'r')
         ax.set_title(title)
 
-def plotSummaryDerivativeHists(fisher):
+def plotSummaryDerivativeHists(fisher, file_loc = None):
     """
     Plot histograms for summaries and derivatives.
     
@@ -198,6 +200,8 @@ def plotSummaryDerivativeHists(fisher):
     ----------
     fisher : Fisher.baseFisher
         Fisher object containing summaries and derivatives.
+    file_loc : string
+            File location to save the plot as an image. Default is None.
     """
     n_summaries = fisher.summaries[0].shape[-1]
     n_sum_plots = n_summaries
@@ -214,10 +218,13 @@ def plotSummaryDerivativeHists(fisher):
                              figsize=(row_sz, 3))
     fig.suptitle('Summary histograms')
     vecs = tf.transpose(fisher.summaries[0])[:n_sum_plots]
+    if n_sum_plots == 1: axes = [axes]
     plotHists(vecs, axes)        
     plt.tight_layout()
-    plt.show()
-    
+    if(file_loc is not None) : 
+        fig.savefig(file_loc + "/summary.png")
+    else : plt.show()
+
     # Plotting derivative histograms
     derivatives = fisher.derivatives
     
@@ -228,6 +235,7 @@ def plotSummaryDerivativeHists(fisher):
         fig, axes = plt.subplots(nrows = 1, ncols = n_thet * n_sum_plots, \
                                  figsize=(2 * row_sz, 3))
         titles = []; vecs = []
+        if n_thet == 1 and n_sum_plots == 1: axes = [axes]
         for der_unpack, idx in zip(derivatives, range(n_thet)) :
             vecs.extend(tf.transpose(der_unpack)[:n_sum_plots])
             titles.extend(["$\partial_" + str(idx) + "V^" + str(i)  + "$" \
@@ -248,4 +256,6 @@ def plotSummaryDerivativeHists(fisher):
     
     fig.suptitle('Derivative histograms')
     plt.tight_layout()
-    plt.show()
+    # Save the plot as an image if file_loc is provided
+    if(file_loc is not None) : fig.savefig(file_loc + "/derivative.png")
+    else : plt.show()

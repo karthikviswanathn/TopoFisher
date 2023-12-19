@@ -9,60 +9,51 @@ Created on Thu Aug 17 13:36:06 2023
 import numpy as np
 
 class VectorizationLayers:
-    def __init__(self, vectorizations, hom_dims, name = "vecLayer"):
+    def __init__(self, vectorizations, pds_idx_list = None, name = "vecLayer"):
         """
         Initialize the VectorizationLayers.
 
         Parameters:
             vectorizations (list): List of vectorization methods for each 
-                                   homological dimension present in hom_dims.
-            hom_dims (list): List of homological dimensions.
+                                   index present in pds_idx_list.
+            pds_idx_list (list, optional): List of indices of persistence 
+                                          diagrams to vectorize. They generally
+                                          stand for the hom_dims. If None, 
+                                          vectorize all the persistence 
+                                          diagrams.
+                                          Defaults to None.
             name (str, optional): The name of the vectorization layer. 
                                   Defaults to "vecLayer".
         """
-        if len(vectorizations) != len(hom_dims): 
+        if pds_idx_list is None :
+            pds_idx_list = [i for i in range(len(vectorizations))]
+        if len(vectorizations) != len(pds_idx_list) and \
+            pds_idx_list is not None: 
             raise ValueError(
         "Make sure that the vectorizations and the hom_dims are compatible.")
+            
         self.vectorizations = vectorizations
-        self.hom_dims = hom_dims
-        self.num_hom_dim = len(hom_dims)
+        self.pds_idx_list = pds_idx_list
+        self.num_hom_dim = len(pds_idx_list)
         self.name = name
         self.is_fitted = [False for idx in range(self.num_hom_dim)]
-        
-    def get_persistence_diagrams(self, sts, hom_dim):
+            
+    def vectorize_persistence_diagrams(self, pds_all_hom_dims):
         """
-        Get persistence diagrams from a list of simplex trees.
-
-        Parameters:
-            sts (list): List of simplex trees.
-            hom_dim (int): Homological dimension.
-
-        Returns:
-            list: List of persistence diagrams.
-        """
-        pds = []
-        for st in sts :
-            pd = st.persistence_intervals_in_dimension(hom_dim)
-            pds.append(getFinitePairs(pd))
-        return pds
-    
-    def vectorize_simplex_trees(self, sts):
-        """
-        Vectorize a list of simplex trees containing the persistence diagrams.
+        Vectorize a list of persistence diagrams
         
         Parameters:
-            sts (list): List of simplex trees.
+            pds_all_hom_dims(list of list): List of persistence diagrams for 
+                                            all the homology dimensions.
         
         Returns:
             numpy array: Vectorized data from the persistent diagrams 
-            corresponding to the homology dimensions in 'hom_dims'.
+            corresponding to the homology dimensions in 'pds_idx_list'.
         """
-        hom_dims = self.hom_dims
         vecs = []
-        for idx in range(self.num_hom_dim):
-            hom_dim = hom_dims[idx]
-            veclayer = self.vectorizations[idx]
-            pds = self.get_persistence_diagrams(sts, hom_dim)
+        for idx, veclayer in enumerate(self.vectorizations):
+            pd_idx = self.pds_idx_list[idx]
+            pds = pds_all_hom_dims[pd_idx]
             if(self.is_fitted[idx] == False) :
                 veclayer.fit(pds)
                 self.is_fitted[idx] = True
@@ -86,15 +77,3 @@ class VectorizationLayers:
         """
         return vecs
            
-def getFinitePairs(diag):
-    """
-    Get finite pairs from a persistence diagram.
-
-    Parameters:
-        diag (numpy array): Persistence diagram.
-
-    Returns:
-        numpy array: Finite pairs from the persistence diagram.
-
-    """
-    return diag[diag[:,1] < np.inf]

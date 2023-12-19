@@ -12,7 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class PersistenceLandscapes(vectorization_layer.VectorizationLayers):
-    def __init__(self, resolutions, num_landscapes, hom_dims, \
+    def __init__(self, resolutions, num_landscapes, pds_idx_list = None, \
                  name = "Landscapes"):
         """
         Initialize PersistenceLandscapes vectorization.
@@ -22,28 +22,29 @@ class PersistenceLandscapes(vectorization_layer.VectorizationLayers):
                                different homological dimensions.
             num_landscapes (list): List of numbers of landscapes for different
                                   homological dimensions.
-            hom_dims (list): List of homological dimensions.
+            pds_idx_list (list, optional): List of indices of persistence 
+                                          diagrams to vectorize. They generally
+                                          stand for the hom_dims. If None, 
+                                          vectorize all the persistence 
+                                          diagrams.
+                                          Defaults to None.
             name (str, optional): Name of the vectorization layer. 
                                  Defaults to "Landscapes".
         """
-        if(len(resolutions) != len(hom_dims)) : 
+        if(len(resolutions) != len(num_landscapes)) : 
             raise ValueError(
-                "Check dimensions of resolutions and hom_dims")
+                "Check dimensions of resolutions and num_landscapes")
         
-        if(len(num_landscapes) != len(hom_dims)) : 
-            raise ValueError(
-                "Check dimensions of num_landscapes and hom_dims")
-        
-        num_hom_dim = len(hom_dims)
+        num_hom_dim = len(resolutions)
         vectorizations = [[] for idx in range(num_hom_dim)]
         for idx in range(num_hom_dim):
             vectorizations[idx] = Landscape(resolution = resolutions[idx], \
                                         num_landscapes = num_landscapes[idx])
-        super().__init__(vectorizations, hom_dims, name)
+        super().__init__(vectorizations, pds_idx_list, name)
                 
 class PersistenceImages(vectorization_layer.VectorizationLayers):
-    def __init__(self, resolutions, bandwidths, hom_dims, reshape_images = True, 
-                 name = "Images"):
+    def __init__(self, resolutions, bandwidths, pds_idx_list = None, 
+                 reshape_images = True, name = "Images"):
         """
         Initialize PersistenceImages vectorization.
 
@@ -52,27 +53,30 @@ class PersistenceImages(vectorization_layer.VectorizationLayers):
                                 for different homological dimensions.
             bandwidths (list): List of bandwidths of the persistence images for
                               different homological dimensions.
-            hom_dims (list): List of homological dimensions.
+            pds_idx_list (list, optional): List of indices of persistence 
+                                          diagrams to vectorize. They generally
+                                          stand for the hom_dims. If None, 
+                                          vectorize all the persistence 
+                                          diagrams.
+                                          Defaults to None.
             reshape_images (bool, optional): Whether to reshape images or not.
                                              Defaults to True.
             name (str, optional): Name of the vectorization layer. 
                                   Defaults to "Images".
         """
         self.resolutions = resolutions
-        if(len(resolutions) != len(hom_dims)) : 
+        if(len(resolutions) != len(bandwidths)) : 
             raise ValueError(
-                "Check dimensions of resolutions and hom_dims")
+                "Check dimensions of resolutions and bandwidths!")
         
-        if(len(bandwidths) != len(hom_dims)) : 
-            raise ValueError(
-                "Check dimensions of bandwidths and hom_dims")
         self.reshape_images = reshape_images
-        num_hom_dim = len(hom_dims)
-        vectorizations = [[] for idx in range(num_hom_dim)]
-        for idx in range(len(hom_dims)):
+        num_layers = len(resolutions)
+        vectorizations = [[] for idx in range(num_layers)]
+        for idx in range(num_layers):
             vectorizations[idx] = PersistenceImage(
-                bandwidth = bandwidths[idx], resolution = resolutions[idx])
-        super().__init__(vectorizations, hom_dims, name)
+                bandwidth = bandwidths[idx], resolution = resolutions[idx], \
+                    weight = lambda x: x[1]**2)
+        super().__init__(vectorizations, pds_idx_list, name)
         
     def post_process(self, vecs):
         """
@@ -134,15 +138,15 @@ class PersistenceImages(vectorization_layer.VectorizationLayers):
             cur_idx = end_idx
         return np.stack(ret_vecs, axis = -1)
     
-    def plot_persistence_image(self, st):
+    def plot_persistence_image(self, pds):
         """
-        Plot persistence images for the persistence diagrams corresponding to
-        'hom_dims' for a given simplex tree.
+        Plot persistence images for the persistence diagrams corresponding to 
+        the pds_idx_list.
 
         Parameters:
             st: Simplex tree.
         """
-        im = self.vectorize_simplex_trees([st])[0]
+        im = self.vectorize_persistence_diagrams([[item] for item in pds])
         ncols = self.num_hom_dim
         fig, axes = plt.subplots(nrows=1, ncols= ncols, \
                                  figsize=(3 * ncols + 2 , 3))

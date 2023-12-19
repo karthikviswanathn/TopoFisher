@@ -38,20 +38,38 @@ class CircleSimulator(input_simulator.FisherSimulator):
         self.nback = nback
         self.bgmAvg = bgmAvg
         self.ntot = ncirc + nback
-        p = self.p = nback/self.ntot
+        self.p = nback/self.ntot
         
         # self.dist is a lambda that takes in theta and outputs the 
         # distribution.
-        self.dist = lambda theta : tfd.Mixture(\
+        # distribution.
+        super().__init__(name)
+       
+    def dist(self, theta):
+        """
+        Generate the distribution given the input parameter.
+
+        Parameters
+        ----------
+        theta : tf.Tensor
+            The parameters to generate the distribution.
+
+        Returns
+        -------
+        tfd.Mixture
+            The generated distribution.
+
+        """
+        p = self.p
+        bgmAvg = self.bgmAvg
+        return tfd.Mixture(\
           cat=tfd.Categorical(probs=[p, 1 - p]),
           components=[
             tfd.Uniform(low=0, high = 2 * bgmAvg),
             tfd.Normal(loc=theta[0], scale=theta[1]
           ),
-        ]) # self.dist is a lambda that takes in theta and outputs the \
-        # distribution.
-        super().__init__(name)
-       
+        ])
+
     def generateInstances(self, θ, num_sims, seed = None): 
         """
         Simulates 'num_sims' point clouds for a given fiducial parameter.

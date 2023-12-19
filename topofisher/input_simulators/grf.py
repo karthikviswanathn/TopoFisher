@@ -103,7 +103,7 @@ class GRFSimulator(input_simulator.FisherSimulator):
         pb = pbox.PowerBox(
             N=self.N,
             dim=self.dim,
-            pk=lambda k: A * k**(-B),
+            pk = lambda k: A * k**(-B),
             boxlength=self.boxlength,
             vol_normalised_power=self.vol_normalised_power,
             ensure_physical=self.ensure_physical,

@@ -43,7 +43,8 @@ def fisher_estimates_wrt_step_size(pipeline, param_idx, step_list,\
     fishers_step_sizes = []
     vecLayer = deepcopy(pipeline.vecLayer)
     fisherLayer = deepcopy(pipeline.fisherLayer)
-    
+    filtLayer = pipeline.filtLayer
+    filtLayer.show_tqdm = False
     # Preparing the 'delta_theta' and the 'find_deriative' attributes.
     find_derivative = [False for _ in range(pipeline.total_num_params)]        
     delta_theta_all = [0. for _ in range(pipeline.total_num_params)]
