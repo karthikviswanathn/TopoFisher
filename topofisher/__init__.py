@@ -6,6 +6,7 @@ from .core.pipeline import FisherPipeline
 from .simulators.grf import GRFSimulator
 from .filtrations.cubical import CubicalLayer
 from .vectorizations.topk import TopKLayer
+from .vectorizations.combined import CombinedVectorization
 from .fisher.analyzer import FisherAnalyzer
 
 __version__ = "0.2.0"
@@ -17,5 +18,6 @@ __all__ = [
     "GRFSimulator",
     "CubicalLayer",
     "TopKLayer",
+    "CombinedVectorization",
     "FisherAnalyzer",
 ]

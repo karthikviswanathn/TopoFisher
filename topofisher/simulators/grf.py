@@ -97,3 +97,63 @@ class GRFSimulator(Simulator):
         # Convert to torch tensor
         grfs_array = np.array(grfs)
         return torch.from_numpy(grfs_array).float().to(self.device)
+
+    def theoretical_fisher_matrix(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Calculate the theoretical Fisher information matrix for GRF.
+
+        This is the Fisher matrix for the power spectrum parameters [A, B]
+        assuming Gaussian fields.
+
+        Args:
+            theta: Parameter tensor [A, B] where A is amplitude, B is slope
+
+        Returns:
+            Theoretical Fisher matrix of shape (2, 2)
+
+        Raises:
+            ValueError: If dim is not 2 (only implemented for 2D)
+        """
+        if self.dim != 2:
+            raise ValueError("Theoretical Fisher matrix only implemented for 2D GRFs")
+
+        if theta.numel() != 2:
+            raise ValueError(f"Expected 2 parameters [A, B], got {theta.numel()}")
+
+        A = float(theta[0])
+        B = float(theta[1])
+
+        # Create powerbox with same settings as simulation
+        pb = pbox.PowerBox(
+            N=self.N,
+            dim=self.dim,
+            pk=lambda k: A * k**(-B),
+            boxlength=self.boxlength,
+            vol_normalised_power=self.vol_normalised_power,
+            ensure_physical=self.ensure_physical,
+        )
+
+        # Get k values (Fourier modes)
+        # Use simplified k-mode extraction to match old behavior
+        k = pb.k()
+        k_modes = k[0:self.N//2, 0:self.N].flatten()
+
+        # Power spectrum at these modes
+        Pk = A * k_modes**(-B)
+
+        # Inverse covariance (diagonal in Fourier space)
+        Cinv = np.diag(1.0 / Pk)
+
+        # Derivatives of covariance w.r.t. parameters
+        C_A = np.diag(k_modes ** (-B))  # dC/dA
+        C_B = np.diag(-Pk * np.log(k_modes))  # dC/dB
+
+        # Fisher matrix: F_ij = 0.5 * Tr(C^-1 dC/di C^-1 dC/dj)
+        F_AA = 0.5 * np.trace(C_A @ Cinv @ C_A @ Cinv)
+        F_AB = 0.5 * np.trace(C_A @ Cinv @ C_B @ Cinv)
+        F_BA = 0.5 * np.trace(C_B @ Cinv @ C_A @ Cinv)
+        F_BB = 0.5 * np.trace(C_B @ Cinv @ C_B @ Cinv)
+
+        fisher_matrix = np.array([[F_AA, F_AB], [F_BA, F_BB]])
+
+        return torch.from_numpy(fisher_matrix).float().to(self.device)

@@ -29,3 +29,7 @@ class FisherResult:
     constraints: torch.Tensor        # 1-sigma parameter constraints
     bias_error: Optional[torch.Tensor] = None  # Fisher bias error
     fractional_bias: Optional[torch.Tensor] = None  # Fractional bias
+    fisher_matrix_moped: Optional[torch.Tensor] = None  # MOPED Fisher matrix (if MOPED used)
+    inverse_fisher_moped: Optional[torch.Tensor] = None  # MOPED inverse Fisher
+    log_det_fisher_moped: Optional[torch.Tensor] = None  # MOPED log det
+    constraints_moped: Optional[torch.Tensor] = None  # MOPED constraints

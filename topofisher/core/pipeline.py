@@ -60,16 +60,9 @@ class FisherPipeline(nn.Module):
             all_diagrams.append(diagrams)
 
         # Step 3: Vectorize persistence diagrams
-        # diagrams is List[List[Tensor]] where outer=hom_dims, inner=samples
-        # We need to concatenate features across homology dimensions
         all_summaries = []
         for diagrams in all_diagrams:  # For each simulation set
-            features_per_hom = []
-            for hom_diagrams in diagrams:  # For each homology dimension
-                features = self.vectorization(hom_diagrams)
-                features_per_hom.append(features)
-            # Concatenate features from all homology dimensions
-            summary = torch.cat(features_per_hom, dim=-1)
+            summary = self.vectorization(diagrams)
             all_summaries.append(summary)
 
         # Step 4: Fisher analysis

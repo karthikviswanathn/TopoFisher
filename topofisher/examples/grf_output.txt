@@ -1,0 +1,55 @@
+============================================================
+TopoFisher: Basic GRF Example
+============================================================
+
+1. Initializing components...
+   ✓ GRF Simulator (32x32 grid)
+   ✓ Cubical Filtration (H0, H1)
+   ✓ Top-K Vectorization (k=10 per dimension)
+   ✓ Fisher Analyzer (with MOPED)
+
+2. Building pipeline...
+   ✓ Pipeline assembled
+
+3. Configuring Fisher analysis...
+   Fiducial parameters: A=1.0, B=2.0
+   Step sizes: δA=0.1000, δB=0.2000
+   Simulations: 4000 (covariance), 2000 (derivatives)
+
+4. Persistence Diagram Statistics...
+   H0 - 1%: 71, 5%: 75, Median: 83
+   H1 - 1%: 102, 5%: 105, Median: 119
+
+5. Running pipeline...
+   This may take a few minutes...
+   ✓ Analysis complete
+
+============================================================
+RESULTS
+============================================================
+
+Theoretical Fisher Matrix (from power spectrum):
+[[ 256.      -207.88913]
+ [-207.88913  227.7226 ]]
+
+Empirical Fisher Matrix (from topological summaries):
+[[100.09867  -80.84392 ]
+ [-80.8475   104.275665]]
+
+MOPED Fisher Matrix (compressed summaries):
+[[ 98.974236 -80.15758 ]
+ [-80.15757   98.94677 ]]
+
+Parameter Constraints (1-sigma):
+  Theory: σ(A) = 0.1229, σ(B) = 0.1303
+   Full:  σ(A) = 0.1635, σ(B) = 0.1602
+   MOPED: σ(A) = 0.1714, σ(B) = 0.1714
+
+Log Fisher Information:
+ Theory:  9.62
+   Full:  8.27
+  MOPED:  8.12
+
+============================================================
+Done!
+============================================================

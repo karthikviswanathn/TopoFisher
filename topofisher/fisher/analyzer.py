@@ -15,15 +15,19 @@ class FisherAnalyzer(nn.Module):
     estimates covariance from simulations at fiducial parameters.
     """
 
-    def __init__(self, clean_data: bool = True):
+    def __init__(self, clean_data: bool = True, use_moped: bool = False, moped_compress_frac: float = 0.5):
         """
         Initialize Fisher analyzer.
 
         Args:
             clean_data: If True, remove zero-variance features
+            use_moped: If True, use MOPED compression before Fisher analysis
+            moped_compress_frac: Fraction of data to use for computing MOPED compression matrix
         """
         super().__init__()
         self.clean_data = clean_data
+        self.use_moped = use_moped
+        self.moped_compress_frac = moped_compress_frac
 
     def forward(
         self,
@@ -47,18 +51,61 @@ class FisherAnalyzer(nn.Module):
         if self.clean_data:
             summaries = self._clean_summaries(summaries)
 
+        # Compute full Fisher matrix
+        fisher_matrix, inv_fisher, mean_derivatives, C, log_det_fisher, constraints = \
+            self._compute_fisher(summaries, delta_theta)
+
+        # Compute MOPED Fisher matrix if requested
+        fisher_matrix_moped = None
+        inverse_fisher_moped = None
+        log_det_fisher_moped = None
+        constraints_moped = None
+
+        if self.use_moped:
+            summaries_moped = self._apply_moped_compression(summaries, delta_theta)
+            fisher_matrix_moped, inverse_fisher_moped, _, _, log_det_fisher_moped, constraints_moped = \
+                self._compute_fisher(summaries_moped, delta_theta)
+
+        return FisherResult(
+            fisher_matrix=fisher_matrix,
+            inverse_fisher=inv_fisher,
+            derivatives=mean_derivatives,
+            covariance=C,
+            log_det_fisher=log_det_fisher,
+            constraints=constraints,
+            fisher_matrix_moped=fisher_matrix_moped,
+            inverse_fisher_moped=inverse_fisher_moped,
+            log_det_fisher_moped=log_det_fisher_moped,
+            constraints_moped=constraints_moped
+        )
+
+    def _compute_fisher(
+        self,
+        summaries: List[torch.Tensor],
+        delta_theta: torch.Tensor
+    ):
+        """
+        Compute Fisher matrix and related quantities from summaries.
+
+        Args:
+            summaries: List of summary tensors
+            delta_theta: Step sizes for derivatives
+
+        Returns:
+            Tuple of (fisher_matrix, inverse_fisher, mean_derivatives, covariance, log_det_fisher, constraints)
+        """
         # Extract covariance samples
-        vecs_cov = summaries[0]  # (n_s, n_features)
+        vecs_cov = summaries[0]
 
         # Compute covariance matrix with Hartlap correction
         C = self._compute_covariance(vecs_cov)
         inv_C = torch.linalg.inv(C)
 
         # Compute derivatives using centered differences
-        derivatives = self._compute_derivatives(summaries[1:], delta_theta)  # (n_params, n_d, n_features)
+        derivatives = self._compute_derivatives(summaries[1:], delta_theta)
 
         # Mean derivatives
-        mean_derivatives = derivatives.mean(dim=1)  # (n_params, n_features)
+        mean_derivatives = derivatives.mean(dim=1)
 
         # Fisher matrix: F_ij = dμ_i^T C^{-1} dμ_j
         fisher_matrix = mean_derivatives @ inv_C @ mean_derivatives.T
@@ -73,14 +120,7 @@ class FisherAnalyzer(nn.Module):
         sign, logdet = torch.linalg.slogdet(fisher_matrix)
         log_det_fisher = sign * logdet
 
-        return FisherResult(
-            fisher_matrix=fisher_matrix,
-            inverse_fisher=inv_fisher,
-            derivatives=mean_derivatives,
-            covariance=C,
-            log_det_fisher=log_det_fisher,
-            constraints=constraints
-        )
+        return fisher_matrix, inv_fisher, mean_derivatives, C, log_det_fisher, constraints
 
     def _clean_summaries(self, summaries: List[torch.Tensor]) -> List[torch.Tensor]:
         """
@@ -152,3 +192,84 @@ class FisherAnalyzer(nn.Module):
             derivatives.append(deriv)
 
         return torch.stack(derivatives)  # (n_params, n_d, n_features)
+
+    def _apply_moped_compression(
+        self,
+        summaries: List[torch.Tensor],
+        delta_theta: torch.Tensor
+    ) -> List[torch.Tensor]:
+        """
+        Apply MOPED compression to summaries.
+
+        Args:
+            summaries: List of summary tensors
+            delta_theta: Step sizes for derivatives
+
+        Returns:
+            Compressed summaries
+        """
+        # Split data for compression
+        vecs_cov = summaries[0]
+        n_s = vecs_cov.shape[0]
+        n_comp = int(self.moped_compress_frac * n_s)
+
+        # Use first fraction for computing compression matrix
+        comp_cov = vecs_cov[:n_comp]
+        comp_ders = [s[:int(self.moped_compress_frac * s.shape[0])] for s in summaries[1:]]
+
+        # Compute derivatives for compression
+        derivatives = self._compute_derivatives(comp_ders, delta_theta)
+        mean_derivatives = derivatives.mean(dim=1)  # (n_params, n_features)
+
+        # Compute covariance
+        C = self._compute_covariance(comp_cov)
+
+        # MOPED compression: B = C^{-1} dμ
+        compression_matrix = torch.linalg.solve(C, mean_derivatives.T)  # (n_features, n_params)
+
+        # Apply compression to all summaries
+        compressed_summaries = [s @ compression_matrix for s in summaries]
+
+        return compressed_summaries
+
+    def compute_moped_compression(
+        self,
+        summaries: List[torch.Tensor],
+        delta_theta: torch.Tensor,
+        compress_frac: float = 0.5
+    ) -> torch.Tensor:
+        """
+        Compute MOPED (Multiple Optimized Parameter Estimation and Data compression) compression matrix.
+
+        Args:
+            summaries: List of summary tensors (same format as forward())
+            delta_theta: Step sizes for derivatives
+            compress_frac: Fraction of data to use for computing compression (rest for Fisher)
+
+        Returns:
+            Compression matrix of shape (n_features, n_params)
+        """
+        # Clean data if requested
+        if self.clean_data:
+            summaries = self._clean_summaries(summaries)
+
+        # Split data for compression
+        vecs_cov = summaries[0]
+        n_s = vecs_cov.shape[0]
+        n_comp = int(compress_frac * n_s)
+
+        # Use first fraction for computing compression matrix
+        comp_cov = vecs_cov[:n_comp]
+        comp_ders = [s[:int(compress_frac * s.shape[0])] for s in summaries[1:]]
+
+        # Compute derivatives for compression
+        derivatives = self._compute_derivatives(comp_ders, delta_theta)
+        mean_derivatives = derivatives.mean(dim=1)  # (n_params, n_features)
+
+        # Compute covariance
+        C = self._compute_covariance(comp_cov)
+
+        # MOPED compression: B = C^{-1} dμ
+        compression_matrix = torch.linalg.solve(C, mean_derivatives.T)  # (n_features, n_params)
+
+        return compression_matrix
