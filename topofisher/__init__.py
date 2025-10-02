@@ -1,7 +1,7 @@
 """
 TopoFisher: Topological Fisher Information Analysis
 """
-from .core.types import FisherConfig, FisherResult
+from .core.data_types import FisherConfig, FisherResult
 from .core.pipeline import FisherPipeline
 from .simulators.grf import GRFSimulator
 from .filtrations.cubical import CubicalLayer
