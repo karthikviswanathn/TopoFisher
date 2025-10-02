@@ -1,2 +1,3 @@
-from . import numpy
+from .topk import TopKLayer
 
+__all__ = ["TopKLayer"]

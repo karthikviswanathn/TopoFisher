@@ -1,11 +1,18 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 13 14:13:06 2023
-
-@author: karthikviswanathan
-"""
-
 from setuptools import setup, find_packages
 
-setup(name='TopoFisher', version='0.1', packages=find_packages())
+setup(
+    name='topofisher',
+    version='0.2.0',
+    packages=find_packages(),
+    install_requires=[
+        'torch>=1.10',
+        'numpy',
+        'gudhi',
+        'powerbox',
+    ],
+    python_requires='>=3.8',
+    author='Karthik Viswanathan',
+    description='Topological Fisher Information Analysis in PyTorch',
+    long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
+)

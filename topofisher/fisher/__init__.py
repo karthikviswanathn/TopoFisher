@@ -1,3 +1,3 @@
-from . import Fisher
-from . import plot_fisher_stats
-from . import imnn
+from .analyzer import FisherAnalyzer
+
+__all__ = ["FisherAnalyzer"]
