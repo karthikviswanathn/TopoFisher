@@ -6,6 +6,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
+import json
+import os
+from datetime import datetime
+from pathlib import Path
 from topofisher import (
     GRFSimulator,
     CubicalLayer,
@@ -406,6 +410,148 @@ def main():
     print("\n" + "=" * 80)
     print("Done!")
     print("=" * 80)
+
+    # Save results to JSON
+    save_results_to_json(
+        results=results,
+        architectures=architectures,
+        simulator=simulator,
+        filtration=filtration,
+        vectorization=vectorization,
+        config=config,
+        device=device,
+        train_summaries=train_summaries,
+        val_summaries=val_summaries,
+        test_summaries=test_summaries,
+        input_dim=input_dim,
+        output_dim=output_dim
+    )
+
+
+def save_results_to_json(results, architectures, simulator, filtration, vectorization,
+                          config, device, train_summaries, val_summaries, test_summaries,
+                          input_dim, output_dim):
+    """Save results and metadata to JSON file."""
+
+    # Create output directory
+    output_dir = Path("data/results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get git commit hash if available
+    try:
+        import subprocess
+        git_commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+    except:
+        git_commit = "unknown"
+
+    # Build metadata
+    metadata = {
+        "timestamp": datetime.now().isoformat(),
+        "git_commit": git_commit,
+        "device": str(device),
+        "simulator": {
+            "type": "GRFSimulator",
+            "N": simulator.N,
+            "dim": simulator.dim,
+            "boxlength": simulator.boxlength
+        },
+        "filtration": {
+            "type": "CubicalLayer",
+            "homology_dimensions": filtration.dimensions,
+            "min_persistence": filtration.min_persistence
+        },
+        "vectorization": {
+            "type": "CombinedVectorization",
+            "layers": [f"TopKLayer(k={layer.k})" for layer in vectorization.layers],
+            "total_features": input_dim
+        },
+        "fisher_config": {
+            "theta_fid": config.theta_fid.cpu().tolist(),
+            "delta_theta": config.delta_theta.cpu().tolist(),
+            "n_s": config.n_s,
+            "n_d": config.n_d,
+            "seed_cov": config.seed_cov,
+            "seed_ders": config.seed_ders
+        },
+        "data_split": {
+            "train": train_summaries[0].shape[0],
+            "val": val_summaries[0].shape[0],
+            "test": test_summaries[0].shape[0]
+        }
+    }
+
+    # Build results array with additional metadata
+    json_results = []
+
+    for r in results:
+        method_name = r['Method']
+        result_entry = {
+            "method": method_name,
+            "log_det_F": round(r['log det F'], 2),
+            "sigma_A": round(r['σ(A)'], 2),
+            "sigma_B": round(r['σ(B)'], 2),
+            "F_00": round(r['F[0,0]'], 2),
+            "F_11": round(r['F[1,1]'], 2),
+            "F_01": round(r['F[0,1]'], 2)
+        }
+
+        # Add filtration, vectorization, compression info
+        if method_name == "Theoretical":
+            result_entry.update({
+                "filtration": "N/A",
+                "vectorization": "N/A",
+                "compression": "N/A"
+            })
+        elif method_name == "Full Top-K":
+            result_entry.update({
+                "filtration": "Cubical",
+                "vectorization": f"Top-K ({'+'.join([str(layer.k) for layer in vectorization.layers])})",
+                "compression": "None"
+            })
+        elif method_name == "MOPED":
+            result_entry.update({
+                "filtration": "Cubical",
+                "vectorization": f"Top-K ({'+'.join([str(layer.k) for layer in vectorization.layers])})",
+                "compression": "MOPED"
+            })
+        else:
+            # Learned compression
+            arch_config = architectures.get(method_name, {})
+            hidden_dims = arch_config.get("hidden_dims")
+            dropout = arch_config.get("dropout", 0.0)
+
+            if hidden_dims is None:
+                comp_desc = f"Linear MLP (dropout={dropout})"
+            else:
+                comp_desc = f"{len(hidden_dims)}-Hidden MLP (dropout={dropout})"
+
+            result_entry.update({
+                "filtration": "Cubical",
+                "vectorization": f"Top-K ({'+'.join([str(layer.k) for layer in vectorization.layers])})",
+                "compression": comp_desc,
+                "architecture": {
+                    "hidden_dims": hidden_dims,
+                    "dropout": dropout,
+                    "lr": arch_config.get("lr"),
+                    "weight_decay": arch_config.get("weight_decay"),
+                    "epochs": arch_config.get("epochs")
+                }
+            })
+
+        json_results.append(result_entry)
+
+    # Combine metadata and results
+    output_data = {
+        "metadata": metadata,
+        "results": json_results
+    }
+
+    # Save to file
+    output_path = output_dir / "latest.json"
+    with open(output_path, 'w') as f:
+        json.dump(output_data, f, indent=2)
+
+    print(f"\n✓ Results saved to {output_path}")
 
 
 if __name__ == "__main__":
