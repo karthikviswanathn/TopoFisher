@@ -17,8 +17,8 @@ TopoFisher: Basic GRF Example
    Simulations: 4000 (covariance), 2000 (derivatives)
 
 4. Persistence Diagram Statistics...
-   H0 - 1%: 71, 5%: 75, Median: 83
-   H1 - 1%: 102, 5%: 105, Median: 119
+   Number of Points in PD0: 1-percentile: 71, 5-percentile: 75, Median: 83
+   Number of Points in PD1: 1-percentile: 102, 5-percentile: 105, Median: 119
 
 5. Running pipeline...
    This may take a few minutes...

@@ -9,13 +9,16 @@ from topofisher import (
     CombinedVectorization,
     FisherAnalyzer,
     FisherPipeline,
+    CachedFisherPipeline,
     FisherConfig
 )
 
 
-def main():
+def main(use_cache=True, cache_path='data/diagrams_basic.pkl'):
     print("=" * 60)
     print("TopoFisher: Basic GRF Example")
+    if use_cache:
+        print(f"Using cached diagrams: {cache_path}")
     print("=" * 60)
 
     # 1. Set up components
@@ -47,21 +50,32 @@ def main():
 
     # 2. Create pipeline
     print("\n2. Building pipeline...")
-    pipeline = FisherPipeline(
-        simulator=simulator,
-        filtration=filtration,
-        vectorization=vectorization,
-        fisher_analyzer=fisher
-    )
-    print("   ✓ Pipeline assembled")
+    if use_cache:
+        pipeline = CachedFisherPipeline(
+            simulator=simulator,
+            filtration=filtration,
+            vectorization=vectorization,
+            fisher_analyzer=fisher,
+            cache_path=cache_path,
+            auto_generate=True
+        )
+        print(f"   ✓ Cached pipeline assembled (cache: {cache_path})")
+    else:
+        pipeline = FisherPipeline(
+            simulator=simulator,
+            filtration=filtration,
+            vectorization=vectorization,
+            fisher_analyzer=fisher
+        )
+        print("   ✓ Pipeline assembled")
 
     # 3. Configure analysis
     print("\n3. Configuring Fisher analysis...")
     config = FisherConfig(
         theta_fid=torch.tensor([1.0, 2.0]),      # Fiducial: A=1.0, B=2.0
         delta_theta=torch.tensor([0.1, 0.2]),    # Step sizes
-        n_s=4000,                                   # Simulations for covariance
-        n_d=2000,                                   # Simulations for derivatives
+        n_s=20000,                                   # Simulations for covariance
+        n_d=20000,                                   # Simulations for derivatives
         find_derivative=[True, True],             # Derivatives for both params
         seed_cov=42,                              # Reproducibility
         seed_ders=[43, 44]
@@ -79,11 +93,11 @@ def main():
     n_points_h0 = torch.tensor([len(pd) for pd in test_diagrams[0]], dtype=torch.float32)
     n_points_h1 = torch.tensor([len(pd) for pd in test_diagrams[1]], dtype=torch.float32)
 
-    print(f"   H0 - 1%: {n_points_h0.quantile(0.01):.0f}, "
-          f"5%: {n_points_h0.quantile(0.05):.0f}, "
+    print(f"   Number of Points in PD0: 1-percentile: {n_points_h0.quantile(0.01):.0f}, "
+          f"5-percentile: {n_points_h0.quantile(0.05):.0f}, "
           f"Median: {n_points_h0.median():.0f}")
-    print(f"   H1 - 1%: {n_points_h1.quantile(0.01):.0f}, "
-          f"5%: {n_points_h1.quantile(0.05):.0f}, "
+    print(f"   Number of Points in PD1: 1-percentile: {n_points_h1.quantile(0.01):.0f}, "
+          f"5-percentile: {n_points_h1.quantile(0.05):.0f}, "
           f"Median: {n_points_h1.median():.0f}")
 
     # 5. Run pipeline

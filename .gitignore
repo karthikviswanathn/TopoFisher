@@ -26,3 +26,5 @@ venv/
 *.pt
 data/
 outputs/
+
+allocate_node.sh
