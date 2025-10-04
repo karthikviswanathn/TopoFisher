@@ -4,7 +4,7 @@
 
 TopoFisher is a clean, modular PyTorch implementation for computing Fisher information matrices using persistent homology. It enables parameter inference from data by combining topological data analysis with Fisher information theory.
 
-**Interactive Dashboard**: See [GRF compression results](https://htmlpreview.github.io/?https://github.com/karthikviswanathn/TopoFisher/blob/main/topofisher/examples/grf/dashboard.html)
+**Interactive Dashboard**: See [GRF compression results](https://htmlpreview.github.io/?https://github.com/karthikviswanathn/TopoFisher/blob/dev/topofisher/examples/grf/dashboard.html)
 
 ## Overview
 
