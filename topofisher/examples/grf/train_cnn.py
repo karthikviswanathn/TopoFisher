@@ -69,7 +69,7 @@ class CompressionCNN(nn.Module):
         # Initial expansion: 2 channels -> 32 channels
         cnn_layers.extend([
             nn.Conv2d(n_channels, 32, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.LeakyReLU()
         ])
 
         # Number of blocks: keep going until we reach 2x2
@@ -80,7 +80,7 @@ class CompressionCNN(nn.Module):
             out_ch = 32 * (2 ** min(i, 3))  # 32, 64, 128, 256, 256, ...
             cnn_layers.extend([
                 nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),  # padding=1 preserves size
-                nn.ReLU(),
+                nn.LeakyReLU(),
                 nn.MaxPool2d(kernel_size=2, stride=2)  # halves size
             ])
             in_ch = out_ch
@@ -96,7 +96,7 @@ class CompressionCNN(nn.Module):
         # CNN dense layers
         self.cnn_dense = nn.Sequential(
             nn.Linear(cnn_flat_size, 128),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, output_dim)
         )
@@ -106,13 +106,13 @@ class CompressionCNN(nn.Module):
         dense_input_size = n_channels * 2 * n_pixels
         self.dense_stack = nn.Sequential(
             nn.Linear(dense_input_size, 512),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(dropout),
             nn.Linear(512, 256),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(dropout),
             nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, output_dim)
         )
@@ -274,7 +274,7 @@ def main():
     filtration = CubicalLayer(homology_dimensions=[0, 1], min_persistence=[0.0, 0.0])
     # Persistence image hyperparameters
     n_pixels = 16  # Start with 16x16, can increase to 32 or 64
-    bandwidth = 0.5  # Start with 1.0, tune as hyperparameter
+    bandwidth = 0.25  # Start with 1.0, tune as hyperparameter
     weighting = "persistence"  # "persistence" or "uniform"
 
     # Use CUDA if available
@@ -447,9 +447,9 @@ def main():
         train_summaries=train_summaries,
         val_summaries=val_summaries,
         delta_theta=config.delta_theta,
-        n_epochs=4000,
-        lr=1e-4,
-        weight_decay=1e-5,
+        n_epochs=2500,
+        lr=2e-4,
+        weight_decay=2e-5,
         test_summaries=test_summaries,
         verbose=True,
         gaussianity_check_fn=test_gaussianity
@@ -465,9 +465,6 @@ def main():
         fisher_analyzer = FisherAnalyzer()
         final_result = fisher_analyzer(compressed_test, config.delta_theta)
 
-        # Also compress validation fiducial for Gaussianity check
-        compressed_val_fiducial = model(val_summaries[0])
-
     F = final_result.fisher_matrix.cpu().numpy()
     print(f"\n{'='*80}")
     print(f"CNN Compression Results (PI {n_pixels}x{n_pixels}, BW={bandwidth}, {weighting})")
@@ -480,11 +477,22 @@ def main():
     print(f"F[0,1]: {F[0,1]:.2f}")
     print(f"{'='*80}")
 
-    # Test Gaussianity on validation set
-    _, all_gaussian = test_gaussianity(compressed_val_fiducial)
+    # Test Gaussianity on test set (fiducial and all derivatives)
+    print(f"\n{'='*80}")
+    print("Gaussianity Check on Test Set")
+    print(f"{'='*80}")
+
+    set_names = ['Fiducial', 'A-', 'A+', 'B-', 'B+']
+    all_pass = True
+
+    for i, (name, compressed) in enumerate(zip(set_names, compressed_test)):
+        _, is_gaussian = test_gaussianity(compressed, verbose=False)
+        if not is_gaussian:
+            all_pass = False
+        print(f"{name}: {'✓ Gaussian' if is_gaussian else '✗ Non-Gaussian'}")
 
     print(f"\n{'='*80}")
-    print(f"Gaussianity Check (Validation Set): {'✓ PASSED' if all_gaussian else '✗ FAILED'}")
+    print(f"Overall Gaussianity: {'✓ ALL PASSED' if all_pass else '✗ SOME FAILED'}")
     print(f"{'='*80}")
 
 

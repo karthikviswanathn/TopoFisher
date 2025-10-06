@@ -171,10 +171,15 @@ def train_compression(model, train_summaries, val_summaries, delta_theta,
                     test_loss = compute_fisher_loss(test_summaries_compressed, delta_theta, fisher_analyzer)
                     test_losses.append(test_loss.item())
 
-                # Check Gaussianity constraint if function provided
+                # Check Gaussianity constraint across all sets if function provided
                 passes_gaussianity = True
                 if gaussianity_check_fn is not None:
-                    _, passes_gaussianity = gaussianity_check_fn(val_summaries_compressed[0], verbose=False)
+                    # Check Gaussianity for all sets (fiducial and derivatives)
+                    for val_set in val_summaries_compressed:
+                        _, is_gaussian = gaussianity_check_fn(val_set, verbose=False)
+                        if not is_gaussian:
+                            passes_gaussianity = False
+                            break
 
                 # Save best model (with Gaussianity constraint if enabled)
                 if val_loss.item() < best_val_loss and passes_gaussianity:
