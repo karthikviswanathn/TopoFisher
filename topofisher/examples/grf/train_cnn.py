@@ -4,7 +4,9 @@ Train learnable CNN compression for GRF Fisher information maximization using pe
 import torch
 import torch.nn as nn
 import numpy as np
+import json
 from pathlib import Path
+from datetime import datetime
 from scipy import stats
 from topofisher import (
     GRFSimulator,
@@ -245,6 +247,137 @@ def test_gaussianity(compressed_summaries, alpha=0.05, verbose=True):
         print("=" * 60)
 
     return results, all_gaussian
+
+
+def convert_to_python_types(obj):
+    """Recursively convert numpy/torch types to Python native types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: convert_to_python_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_python_types(item) for item in obj]
+    elif isinstance(obj, (np.integer, np.floating)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
+
+def save_cnn_results_to_json(fisher_result, simulator, filtration, vectorization, config, device,
+                              n_pixels, bandwidth, weighting, dropout, lr, weight_decay, epochs,
+                              train_size, val_size, test_size):
+    """Save CNN results by appending to existing latest.json or creating new one."""
+
+    # Create output directory
+    output_dir = Path("data/results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "latest.json"
+
+    # Get git commit hash if available
+    try:
+        import subprocess
+        git_commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+    except:
+        git_commit = "unknown"
+
+    # Extract Fisher matrix values
+    F = fisher_result.fisher_matrix.cpu().numpy()
+
+    # Calculate constraints properly: sqrt of diagonal of inverse Fisher matrix
+    F_inv = np.linalg.inv(F)
+    sigma_A = np.sqrt(F_inv[0, 0])
+    sigma_B = np.sqrt(F_inv[1, 1])
+
+    # Create result entry for CNN
+    result_entry = {
+        "method": f"PI CNN ({n_pixels}x{n_pixels}, BW={bandwidth})",
+        "log_det_F": round(float(fisher_result.log_det_fisher.item()), 2),
+        "sigma_A": round(float(sigma_A), 2),
+        "sigma_B": round(float(sigma_B), 2),
+        "F_00": round(float(F[0,0]), 2),
+        "F_11": round(float(F[1,1]), 2),
+        "F_01": round(float(F[0,1]), 2),
+        "filtration": "Cubical",
+        "vectorization": f"PI ({n_pixels}x{n_pixels}, BW={bandwidth}, {weighting})",
+        "compression": f"CNN (dropout={dropout})",
+        "architecture": {
+            "type": "CNN",
+            "n_pixels": n_pixels,
+            "bandwidth": float(bandwidth),
+            "weighting": weighting,
+            "dropout": float(dropout),
+            "lr": float(lr),
+            "weight_decay": float(weight_decay),
+            "epochs": epochs
+        }
+    }
+
+    # Check if file exists
+    if output_path.exists():
+        # Read existing data
+        with open(output_path, 'r') as f:
+            data = json.load(f)
+
+        # Remove any existing CNN entries to replace with new one
+        data['results'] = [r for r in data['results'] if 'CNN' not in r.get('compression', '')]
+
+        # Append new result
+        data['results'].append(result_entry)
+
+        print(f"\n✓ Appending CNN result to existing {output_path}")
+    else:
+        # Create new data structure
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "git_commit": git_commit,
+            "device": str(device),
+            "simulator": {
+                "type": "GRFSimulator",
+                "N": simulator.N,
+                "dim": simulator.dim,
+                "boxlength": simulator.boxlength
+            },
+            "filtration": {
+                "type": "CubicalLayer",
+                "homology_dimensions": filtration.dimensions,
+                "min_persistence": filtration.min_persistence
+            },
+            "vectorization": {
+                "type": "PersistenceImageLayer",
+                "n_pixels": n_pixels,
+                "bandwidth": bandwidth,
+                "weighting": weighting
+            },
+            "fisher_config": {
+                "theta_fid": config.theta_fid.cpu().tolist(),
+                "delta_theta": config.delta_theta.cpu().tolist(),
+                "n_s": config.n_s,
+                "n_d": config.n_d,
+                "seed_cov": config.seed_cov,
+                "seed_ders": config.seed_ders
+            },
+            "data_split": {
+                "train": train_size,
+                "val": val_size,
+                "test": test_size
+            }
+        }
+
+        data = {
+            "metadata": metadata,
+            "results": [result_entry]
+        }
+
+        print(f"\n✓ Creating new {output_path}")
+
+    # Convert all data to Python native types for JSON serialization
+    data = convert_to_python_types(data)
+
+    # Save to file
+    with open(output_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    print(f"✓ Results saved to {output_path}")
 
 
 def main():
@@ -494,6 +627,26 @@ def main():
     print(f"\n{'='*80}")
     print(f"Overall Gaussianity: {'✓ ALL PASSED' if all_pass else '✗ SOME FAILED'}")
     print(f"{'='*80}")
+
+    # Save results to JSON
+    save_cnn_results_to_json(
+        fisher_result=final_result,
+        simulator=simulator,
+        filtration=filtration,
+        vectorization=vectorization,
+        config=config,
+        device=device,
+        n_pixels=n_pixels,
+        bandwidth=bandwidth,
+        weighting=weighting,
+        dropout=0.2,
+        lr=2e-4,
+        weight_decay=2e-5,
+        epochs=2500,
+        train_size=train_summaries[0].shape[0],
+        val_size=val_summaries[0].shape[0],
+        test_size=test_summaries[0].shape[0]
+    )
 
 
 if __name__ == "__main__":
