@@ -4,6 +4,9 @@ Abstract base classes (interfaces) for TopoFisher components.
 from abc import ABC, abstractmethod
 from typing import List, Optional
 import torch
+import torch.nn as nn
+
+from topofisher.core.data_types import FisherResult
 
 
 class Simulator(ABC):
@@ -75,6 +78,35 @@ class Vectorization(ABC):
         """Convenience method to fit and transform in one call."""
         self.fit(diagrams)
         return self.transform(diagrams)
+
+
+class Compression(nn.Module, ABC):
+    """Base class for compression methods in the TopoFisher pipeline.
+
+    Compression sits between vectorization and Fisher analysis:
+        vectorization → compression → fisher_analyzer
+    """
+
+    @abstractmethod
+    def forward(
+        self,
+        summaries: List[torch.Tensor],
+        delta_theta: Optional[torch.Tensor] = None
+    ) -> List[torch.Tensor]:
+        """
+        Apply compression to summaries.
+
+        Args:
+            summaries: List of summary tensors.
+                summaries[0]: shape (n_s, n_features) at theta_fid (for covariance)
+                summaries[1:]: shape (n_d, n_features) at perturbed values
+                    Ordered as [theta_minus_0, theta_plus_0, theta_minus_1, theta_plus_1, ...]
+            delta_theta: Optional step sizes for derivatives (needed for MOPED)
+
+        Returns:
+            List of compressed summary tensors with same structure as input
+        """
+        pass
 
 
 class FisherAnalyzer(ABC):

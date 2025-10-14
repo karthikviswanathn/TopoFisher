@@ -28,3 +28,6 @@ data/
 outputs/
 
 allocate_node.sh
+
+logs/*
+.*

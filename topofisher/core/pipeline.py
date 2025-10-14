@@ -15,7 +15,7 @@ class FisherPipeline(nn.Module):
     """
     End-to-end pipeline for Fisher information analysis.
 
-    Orchestrates: Simulation -> Filtration -> Vectorization -> Fisher Analysis
+    Orchestrates: Simulation -> Filtration -> Vectorization -> Compression -> Fisher Analysis
 
     TODO: Add support for selective derivative computation (find_derivative flag)
     """
@@ -25,6 +25,7 @@ class FisherPipeline(nn.Module):
         simulator: nn.Module,
         filtration: nn.Module,
         vectorization: nn.Module,
+        compression: nn.Module,
         fisher_analyzer: nn.Module
     ):
         """
@@ -34,12 +35,14 @@ class FisherPipeline(nn.Module):
             simulator: Simulator module (e.g., GRFSimulator)
             filtration: Filtration module (e.g., CubicalLayer)
             vectorization: Vectorization module (e.g., CombinedVectorization)
+            compression: Compression module (e.g., MOPEDCompression, IdentityCompression)
             fisher_analyzer: Fisher analyzer module
         """
         super().__init__()
         self.simulator = simulator
         self.filtration = filtration
         self.vectorization = vectorization
+        self.compression = compression
         self.fisher_analyzer = fisher_analyzer
 
     def forward(self, config: FisherConfig) -> FisherResult:
@@ -67,7 +70,10 @@ class FisherPipeline(nn.Module):
             summary = self.vectorization(diagrams)
             all_summaries.append(summary)
 
-        # Step 4: Fisher analysis
+        # Step 4: Apply compression
+        all_summaries = self.compression(all_summaries, config.delta_theta)
+
+        # Step 5: Fisher analysis
         result = self.fisher_analyzer(all_summaries, config.delta_theta)
 
         return result

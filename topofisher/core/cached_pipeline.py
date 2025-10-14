@@ -198,6 +198,7 @@ class CachedFisherPipeline(FisherPipeline):
         simulator: nn.Module,
         filtration: nn.Module,
         vectorization: nn.Module,
+        compression: nn.Module,
         fisher_analyzer: nn.Module,
         cache_path: str,
         auto_generate: bool = True,
@@ -210,12 +211,13 @@ class CachedFisherPipeline(FisherPipeline):
             simulator: Simulator module (used if cache doesn't exist)
             filtration: Filtration module (used if cache doesn't exist)
             vectorization: Vectorization module
+            compression: Compression module (e.g., MOPEDCompression, IdentityCompression)
             fisher_analyzer: Fisher analyzer module
             cache_path: Path to diagram cache file
             auto_generate: If True, automatically generate cache if it doesn't exist
             save_simulations: Whether to save raw simulations when generating cache
         """
-        super().__init__(simulator, filtration, vectorization, fisher_analyzer)
+        super().__init__(simulator, filtration, vectorization, compression, fisher_analyzer)
         self.cache_path = cache_path
         self.auto_generate = auto_generate
         self.save_simulations = save_simulations
@@ -253,6 +255,9 @@ class CachedFisherPipeline(FisherPipeline):
         for diagrams in all_diagrams:
             summary = self.vectorization(diagrams)
             all_summaries.append(summary)
+
+        # Apply compression
+        all_summaries = self.compression(all_summaries, config.delta_theta)
 
         # Fisher analysis
         result = self.fisher_analyzer(all_summaries, config.delta_theta)
