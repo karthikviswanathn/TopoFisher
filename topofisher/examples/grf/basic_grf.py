@@ -28,7 +28,6 @@ def main(use_cache=True, cache_path='data/diagrams_basic.pkl'):
     simulator = GRFSimulator(
         N=N,               # 32x32 grid
         dim=2,              # 2D fields
-        boxlength=N,
         device="cpu"
     )
     print("   ✓ GRF Simulator (32x32 grid)")

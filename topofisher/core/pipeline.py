@@ -5,10 +5,8 @@ from typing import List, Optional
 import torch
 import torch.nn as nn
 import numpy as np
-import pickle
-import os
 
-from .data_types import FisherConfig, FisherResult
+from .data_types import FisherConfig, FisherResult, TrainingConfig
 
 
 class FisherPipeline(nn.Module):
@@ -45,16 +43,23 @@ class FisherPipeline(nn.Module):
         self.compression = compression
         self.fisher_analyzer = fisher_analyzer
 
-    def forward(self, config: FisherConfig) -> FisherResult:
+    def run(self, config: FisherConfig, training_config: Optional[TrainingConfig] = None) -> FisherResult:
         """
         Run the full pipeline.
 
         Args:
             config: Fisher configuration with parameters and settings
+            training_config: Optional training config for learned compressions
 
         Returns:
             FisherResult with Fisher matrix and analysis
         """
+        # Step 0: Move models to simulator's device
+        device = getattr(self.simulator, 'device', 'cpu')
+        if isinstance(device, str):
+            device = torch.device(device)
+        self.compression.to(device)
+
         # Step 1: Generate simulations
         all_data = self._generate_data(config)
 
@@ -70,13 +75,41 @@ class FisherPipeline(nn.Module):
             summary = self.vectorization(diagrams)
             all_summaries.append(summary)
 
-        # Step 4: Apply compression
+        # Step 4: Train compression if needed
+        training_history = None
+        if training_config is not None:
+            training_history = self.compression.train_compression(all_summaries, config.delta_theta, training_config)
+
+        # Step 5: Apply compression
         all_summaries = self.compression(all_summaries, config.delta_theta)
 
-        # Step 5: Fisher analysis
+        # Step 6: Fisher analysis
         result = self.fisher_analyzer(all_summaries, config.delta_theta)
 
+        # Step 7: Test Gaussianity on test set (if training was done)
+        if training_history is not None and 'test_summaries' in training_history:
+            print("\n" + "=" * 80)
+            print("Gaussianity Test on Test Set")
+            print("=" * 80)
+            from ..fisher.gaussianity import test_gaussianity
+
+            # Compress test summaries and test Gaussianity
+            test_summaries_compressed = self.compression(training_history['test_summaries'], config.delta_theta)
+            test_gaussianity(test_summaries_compressed, alpha=0.05, verbose=True)
+
         return result
+
+    def forward(self, config: FisherConfig) -> FisherResult:
+        """
+        PyTorch nn.Module forward pass (calls run with no training).
+
+        Args:
+            config: Fisher configuration with parameters and settings
+
+        Returns:
+            FisherResult with Fisher matrix and analysis
+        """
+        return self.run(config, training_config=None)
 
     def _generate_data(self, config: FisherConfig) -> List[torch.Tensor]:
         """
@@ -91,11 +124,11 @@ class FisherPipeline(nn.Module):
                 [1:]: perturbed simulations (for derivatives)
                       Ordered as [theta_minus_0, theta_plus_0, theta_minus_1, theta_plus_1, ...]
         """
-        # Set seeds
-        seed_cov = config.seed_cov if config.seed_cov is not None else np.random.randint(1e10)
+        # Set seeds (numpy seed must be between 0 and 2**32 - 1)
+        seed_cov = config.seed_cov if config.seed_cov is not None else np.random.randint(2**32)
         n_params = len(config.theta_fid)
         seed_ders = config.seed_ders if config.seed_ders is not None else \
-            [np.random.randint(1e10) for _ in range(n_params)]
+            [np.random.randint(2**32) for _ in range(n_params)]
 
         # Generate fiducial simulations
         data_fid = self.simulator.generate(

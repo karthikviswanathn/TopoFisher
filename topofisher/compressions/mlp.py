@@ -16,14 +16,14 @@ class MLPCompression(Compression):
     """
     Multi-layer Perceptron for compressing summaries to maximize Fisher information.
 
-    This is a learned compression that must be trained externally (see examples/grf/train_mlp.py).
-    Once trained, it provides a simple forward pass transformation.
+    This is a learned compression that can be trained using pipeline.fit().
+    Supports lazy initialization: dimensions can be inferred from data.
     """
 
     def __init__(
         self,
-        input_dim: int,
-        output_dim: int,
+        input_dim: Optional[int] = None,
+        output_dim: Optional[int] = None,
         hidden_dims: Optional[List[int]] = None,
         dropout: float = 0.2
     ):
@@ -31,8 +31,8 @@ class MLPCompression(Compression):
         Initialize MLP compression.
 
         Args:
-            input_dim: Input feature dimension
-            output_dim: Output dimension (typically n_params)
+            input_dim: Input feature dimension (None for lazy initialization)
+            output_dim: Output dimension, typically n_params (None for lazy initialization)
             hidden_dims: List of hidden layer dimensions.
                         None or [] for linear compression (no hidden layers)
                         [h1] for 1 hidden layer, [h1, h2] for 2 hidden layers, etc.
@@ -43,8 +43,16 @@ class MLPCompression(Compression):
         self.output_dim = output_dim
         self.hidden_dims = hidden_dims if hidden_dims is not None else []
         self.dropout_prob = dropout
+        self._initialized = False
+        self.network = None
+        self._device = None  # Track device for lazy initialization
 
-        # Build network
+        # If dimensions provided, initialize network now
+        if input_dim is not None and output_dim is not None:
+            self._build_network(input_dim, output_dim)
+
+    def _build_network(self, input_dim: int, output_dim: int):
+        """Build the MLP network with given dimensions."""
         layers = []
         if not self.hidden_dims:
             # Linear compression (no hidden layers)
@@ -55,11 +63,44 @@ class MLPCompression(Compression):
             for h_dim in self.hidden_dims:
                 layers.append(nn.Linear(prev_dim, h_dim))
                 layers.append(nn.LeakyReLU(negative_slope=0.01))
-                layers.append(nn.Dropout(dropout))
+                layers.append(nn.Dropout(self.dropout_prob))
                 prev_dim = h_dim
             layers.append(nn.Linear(prev_dim, output_dim))
 
         self.network = nn.Sequential(*layers)
+
+        # Move network to stored device if available
+        if self._device is not None:
+            self.network.to(self._device)
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self._initialized = True
+
+    def is_trainable(self) -> bool:
+        """Return True since MLP compression requires training."""
+        return True
+
+    def is_initialized(self) -> bool:
+        """Return True if network has been initialized."""
+        return self._initialized
+
+    def to(self, device):
+        """Override to() to track device for lazy initialization."""
+        self._device = device
+        return super().to(device)
+
+    def initialize(self, input_dim: int, output_dim: int) -> None:
+        """
+        Initialize network with inferred dimensions.
+
+        Args:
+            input_dim: Input feature dimension
+            output_dim: Output dimension (typically n_params)
+        """
+        if self._initialized:
+            raise RuntimeError("MLPCompression already initialized")
+        self._build_network(input_dim, output_dim)
 
     def forward(
         self,
@@ -76,6 +117,12 @@ class MLPCompression(Compression):
         Returns:
             Compressed summaries
         """
+        if not self._initialized:
+            raise RuntimeError(
+                "MLPCompression not initialized. Call initialize(input_dim, output_dim) "
+                "or use pipeline.fit() to automatically initialize."
+            )
+
         # Apply network to each summary tensor
         compressed = [self.network(s) for s in summaries]
         return compressed
@@ -124,6 +171,9 @@ class MLPCompression(Compression):
         Args:
             path: Path to save model (.pth or .pt file)
         """
+        if not self._initialized:
+            raise RuntimeError("Cannot save uninitialized MLPCompression")
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -140,7 +190,12 @@ class MLPCompression(Compression):
         torch.save(checkpoint, path)
 
     def __repr__(self):
-        if not self.hidden_dims:
+        if not self._initialized:
+            if self.hidden_dims:
+                return f"MLPCompression(uninitialized, hidden_dims={self.hidden_dims}, dropout={self.dropout_prob})"
+            else:
+                return f"MLPCompression(uninitialized, linear)"
+        elif not self.hidden_dims:
             return f"MLPCompression(Linear: {self.input_dim} → {self.output_dim})"
         else:
             dims_str = f"{self.input_dim} → " + " → ".join(map(str, self.hidden_dims)) + f" → {self.output_dim}"

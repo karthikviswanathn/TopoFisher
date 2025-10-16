@@ -141,11 +141,11 @@ def _generate_data_from_config(config: FisherConfig, simulator: nn.Module) -> Li
     Returns:
         List of data tensors [fiducial, theta_minus_0, theta_plus_0, ...]
     """
-    # Set seeds
-    seed_cov = config.seed_cov if config.seed_cov is not None else np.random.randint(1e10)
+    # Set seeds (numpy seed must be between 0 and 2**32 - 1)
+    seed_cov = config.seed_cov if config.seed_cov is not None else np.random.randint(2**32)
     n_params = len(config.theta_fid)
     seed_ders = config.seed_ders if config.seed_ders is not None else \
-        [np.random.randint(1e10) for _ in range(n_params)]
+        [np.random.randint(2**32) for _ in range(n_params)]
 
     # Generate fiducial simulations
     print(f"Generating fiducial simulations (n={config.n_s})...")

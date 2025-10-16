@@ -26,8 +26,13 @@ venv/
 *.pt
 data/
 outputs/
+external/
 
 allocate_node.sh
 
-logs/*
+logs/
 .*
+
+CLAUDE.md
+scripts/
+CODE_REVIEW.md

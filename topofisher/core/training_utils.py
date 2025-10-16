@@ -1,9 +1,11 @@
 """
-Shared utilities for GRF compression training (MLP and CNN).
+Training utilities for learned compressions.
+
+Provides functions for training compressions to maximize Fisher information.
 """
+import numpy as np
 import torch
-from topofisher import FisherAnalyzer, generate_and_save_diagrams, load_diagrams
-import os
+from ..fisher.analyzer import FisherAnalyzer
 
 
 def compute_fisher_loss(summaries, delta_theta, fisher_analyzer):
@@ -22,29 +24,7 @@ def compute_fisher_loss(summaries, delta_theta, fisher_analyzer):
     return -result.log_det_fisher
 
 
-def generate_or_load_diagrams(config, simulator, filtration, cache_path):
-    """
-    Generate or load precomputed diagrams.
-
-    Args:
-        config: FisherConfig
-        simulator: GRFSimulator
-        filtration: CubicalLayer
-        cache_path: Path to diagram cache
-
-    Returns:
-        (all_diagrams, metadata) where all_diagrams is a list of diagram sets
-    """
-    # Generate and save diagrams if cache doesn't exist
-    if not os.path.exists(cache_path):
-        print(f"Cache not found, generating diagrams...")
-        generate_and_save_diagrams(config, simulator, filtration, cache_path)
-
-    # Load diagrams from cache
-    return load_diagrams(cache_path)
-
-
-def split_data(summaries, train_frac=0.5, val_frac=0.25, seed=42):
+def split_data(summaries, train_frac=0.5, val_frac=0.25):
     """
     Split summaries into train/val/test sets.
 
@@ -55,13 +35,11 @@ def split_data(summaries, train_frac=0.5, val_frac=0.25, seed=42):
         summaries: List of tensors [fiducial, theta_minus_0, theta_plus_0, theta_minus_1, theta_plus_1, ...]
         train_frac: Fraction for training
         val_frac: Fraction for validation
-        seed: Random seed for shuffling
 
     Returns:
         (train_summaries, val_summaries, test_summaries)
     """
-    torch.manual_seed(seed)
-
+    
     def split_with_perm(tensor, perm, train_frac, val_frac):
         """Split a tensor using a given permutation."""
         n = tensor.shape[0]
