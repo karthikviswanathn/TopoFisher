@@ -384,7 +384,7 @@ def main():
     # Configuration
     N = 32
     dim = 2
-    boxlength = 256.0
+    # boxlength now defaults to N in GRFSimulator
 
     # Fisher configuration
     theta_fid = torch.tensor([1.0, 2.0])
@@ -403,7 +403,7 @@ def main():
     )
 
     # Setup
-    simulator = GRFSimulator(N=N, dim=dim, boxlength=boxlength)
+    simulator = GRFSimulator(N=N, dim=dim)
     filtration = CubicalLayer(homology_dimensions=[0, 1], min_persistence=[0.0, 0.0])
     # Persistence image hyperparameters
     n_pixels = 16  # Start with 16x16, can increase to 32 or 64
@@ -569,7 +569,7 @@ def main():
         n_channels=n_channels,
         n_pixels=n_pixels,
         output_dim=output_dim,
-        dropout=0.2
+        dropout=0.1
     ).to(device)
 
     # Print layer shape transformations
@@ -580,6 +580,7 @@ def main():
         train_summaries=train_summaries,
         val_summaries=val_summaries,
         delta_theta=config.delta_theta,
+        batch_size = 1000,
         n_epochs=2500,
         lr=2e-4,
         weight_decay=2e-5,

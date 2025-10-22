@@ -32,8 +32,17 @@ def save_diagrams(
     for diagram_set in diagrams:
         diagram_set_np = []
         for hom_dim_diagrams in diagram_set:
-            hom_dim_np = [d.cpu().numpy() for d in hom_dim_diagrams]
-            diagram_set_np.append(hom_dim_np)
+            # Handle both Cubical (list of tensors) and MMA (list of lists of (births, deaths))
+            sample_diagrams_np = []
+            for d in hom_dim_diagrams:
+                if isinstance(d, list):
+                    # MMA case: list of (births, deaths) tuples
+                    d_np = [(births.cpu().numpy(), deaths.cpu().numpy()) for births, deaths in d]
+                else:
+                    # Cubical case: tensor
+                    d_np = d.cpu().numpy()
+                sample_diagrams_np.append(d_np)
+            diagram_set_np.append(sample_diagrams_np)
         diagrams_np.append(diagram_set_np)
 
     # Convert simulations to numpy if provided
@@ -84,8 +93,18 @@ def load_diagrams(filepath: str) -> Tuple[List[List[List[torch.Tensor]]], dict]:
     for diagram_set_np in data['diagrams']:
         diagram_set = []
         for hom_dim_np in diagram_set_np:
-            hom_dim = [torch.from_numpy(d).float() for d in hom_dim_np]
-            diagram_set.append(hom_dim)
+            # Handle both Cubical (numpy arrays) and MMA (lists of (births, deaths) tuples)
+            sample_diagrams = []
+            for d in hom_dim_np:
+                if isinstance(d, list):
+                    # MMA case: list of (births_np, deaths_np) tuples
+                    d_torch = [(torch.from_numpy(births).float(), torch.from_numpy(deaths).float())
+                               for births, deaths in d]
+                else:
+                    # Cubical case: numpy array
+                    d_torch = torch.from_numpy(d).float()
+                sample_diagrams.append(d_torch)
+            diagram_set.append(sample_diagrams)
         diagrams.append(diagram_set)
 
     print(f"Loaded diagrams from {filepath}")
