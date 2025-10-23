@@ -154,18 +154,15 @@ class MMAKernelLayer(nn.Module):
                 R_dense = R_dense.cuda()
             
             # Compute using original functions if available
-            if MMA_VECTORIZATION_AVAILABLE:
-                # Compute weights using original function
-                w = interleaving_weights(mma_diff)
-                
-                # Compute distances using original function
-                SD = distance_to(mma_diff, R_dense)
-                
-                # Apply kernel using original function
-                img = self.kernel_func(SD, w, self.bandwidth, p=self.p, signed=self.signed)
-            else:
-                # Fallback implementation
-                img = self._fallback_compute(mma_diff, R_dense)
+            if not MMA_VECTORIZATION_AVAILABLE:
+                raise ImportError("mma_vectorization functions not available. Please ensure mma_vectorization.py is in the topofisher package.")
+
+            # Compute weights using original function
+            w = interleaving_weights(mma_diff)
+            # Compute distances using original function  
+            SD = distance_to(mma_diff, R_dense)
+            # Apply kernel using original function
+            img = self.kernel_func(SD, w, self.bandwidth, p=self.p, signed=self.signed)
             
             # Reshape based on return_flat
             if not self.return_flat:
@@ -174,42 +171,6 @@ class MMAKernelLayer(nn.Module):
             features.append(img)
         
         return torch.stack(features)
-    
-    def _fallback_compute(self, intervals: List[tuple], grid_points: torch.Tensor) -> torch.Tensor:
-        """
-        Fallback computation if original functions not available.
-        This is a simplified version.
-        """
-        n_points = grid_points.shape[0]
-        result = torch.zeros(n_points, device=grid_points.device)
-        
-        for births, deaths in intervals:
-            if births.numel() == 0 or deaths.numel() == 0:
-                continue
-                
-            # Simple weight (average interval size)
-            weight = (deaths - births).abs().max(dim=1).values.mean()
-            
-            # Simple distance (minimum distance to interval)
-            birth_dist = torch.cdist(grid_points, births).min(dim=1).values
-            death_dist = torch.cdist(grid_points, deaths).min(dim=1).values
-            dist = torch.maximum(birth_dist, death_dist)
-            
-            # Apply kernel
-            if self.kernel == 'gaussian':
-                kernel_val = torch.exp(-0.5 * ((dist / self.bandwidth) ** 2))
-            elif self.kernel == 'linear':
-                kernel_val = torch.where(
-                    dist < self.bandwidth,
-                    (self.bandwidth - dist) / self.bandwidth,
-                    torch.zeros_like(dist)
-                )
-            else:  # exponential
-                kernel_val = torch.exp(-(dist / self.bandwidth))
-            
-            result += kernel_val * (weight ** self.p)
-        
-        return result
     
     def __repr__(self):
         return (f"MMAKernelLayer(kernel='{self.kernel}', resolution={self.resolution}, "
