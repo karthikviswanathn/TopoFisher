@@ -18,6 +18,12 @@ from .vectorizations.topk import TopKLayer
 from .vectorizations.combined import CombinedVectorization
 from .vectorizations.persistence_image import PersistenceImageLayer
 from .vectorizations.mma_topk import MMATopKLayer
+from .vectorizations.mma_kernel import (
+    MMAKernelLayer,
+    MMAGaussianLayer, 
+    MMALinearLayer,
+    MMAExponentialLayer
+)
 from .vectorizations.identity import IdentityVectorization
 from .compressions import (
     Compression,
@@ -50,6 +56,10 @@ __all__ = [
     "CombinedVectorization",
     "PersistenceImageLayer",
     "MMATopKLayer",
+    "MMAKernelLayer",
+    "MMAGaussianLayer", 
+    "MMALinearLayer",
+    "MMAExponentialLayer",
     "IdentityVectorization",
     "Compression",
     "IdentityCompression",
