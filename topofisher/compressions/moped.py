@@ -3,7 +3,7 @@ MOPED (Multiple Optimized Parameter Estimation and Data compression) compression
 
 Reference: Heavens et al. 2000 (https://arxiv.org/abs/astro-ph/9911102)
 """
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import torch
 
 from . import Compression
@@ -26,20 +26,69 @@ class MOPEDCompression(Compression):
 
     def __init__(
         self,
-        compress_frac: float = 0.5,
+        train_frac: float = 0.5,
         clean_data: bool = True
     ):
         """
         Initialize MOPED compression.
 
         Args:
-            compress_frac: Fraction of data to use for computing compression matrix
-                          (remaining data can be used for Fisher analysis)
+            train_frac: Fraction of data for training set (discarded, not used for MOPED)
+                       Remaining (1 - train_frac) is validation set, used for computing compression matrix
             clean_data: If True, remove zero-variance features before compression
         """
         super().__init__()
-        self.compress_frac = compress_frac
+        self.train_frac = train_frac
         self.clean_data = clean_data
+
+    def split_data(self, summaries: List[torch.Tensor]) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        """
+        Split summaries into train/test sets.
+
+        Important: theta_minus and theta_plus pairs use the same random seed during generation,
+        so they must use the same permutation to maintain pairing.
+
+        Args:
+            summaries: List of tensors [fiducial, theta_minus_0, theta_plus_0, theta_minus_1, theta_plus_1, ...]
+
+        Returns:
+            (train_summaries, test_summaries)
+        """
+
+        def split_with_perm(tensor, perm, train_frac):
+            """Split a tensor using a given permutation."""
+            n = tensor.shape[0]
+            shuffled = tensor[perm]
+            n_train = int(n * train_frac)
+            return shuffled[:n_train], shuffled[n_train:]
+
+        # Generate permutations with fixed seed for reproducibility
+        torch.manual_seed(42)
+
+        # Fiducial gets its own permutation
+        perm_fid = torch.randperm(summaries[0].shape[0])
+
+        # Each parameter pair (theta_minus, theta_plus) shares a permutation
+        n_params = (len(summaries) - 1) // 2
+        perms_deriv = [torch.randperm(summaries[1 + 2*i].shape[0]) for i in range(n_params)]
+
+        # Apply permutations and split
+        split_summaries_list = []
+
+        # Fiducial
+        split_summaries_list.append(split_with_perm(summaries[0], perm_fid, self.train_frac))
+
+        # Derivatives (pairs share permutation to maintain seed pairing)
+        for i in range(n_params):
+            perm = perms_deriv[i]
+            split_summaries_list.append(split_with_perm(summaries[1 + 2*i], perm, self.train_frac))
+            split_summaries_list.append(split_with_perm(summaries[2 + 2*i], perm, self.train_frac))
+
+        # Reorganize into separate lists
+        train_summaries = [s[0] for s in split_summaries_list]
+        test_summaries = [s[1] for s in split_summaries_list]
+
+        return train_summaries, test_summaries
 
     def forward(
         self,
@@ -49,12 +98,15 @@ class MOPEDCompression(Compression):
         """
         Compute and apply MOPED compression to summaries.
 
+        The compression matrix is learned using the train set,
+        then applied to the test set only.
+
         Args:
             summaries: List of summary tensors
             delta_theta: Step sizes for derivative estimation (required for MOPED)
 
         Returns:
-            Compressed summaries with shape (n_samples, n_params)
+            Compressed test summaries with shape (n_test_samples, n_params)
         """
         if delta_theta is None:
             raise ValueError("MOPED compression requires delta_theta for derivative computation")
@@ -63,11 +115,14 @@ class MOPEDCompression(Compression):
         if self.clean_data:
             summaries = self._clean_summaries(summaries)
 
-        # Compute compression matrix using a fraction of the data
-        compression_matrix = self._compute_moped_matrix(summaries, delta_theta)
+        # Split into train/test
+        train_summaries, test_summaries = self.split_data(summaries)
 
-        # Apply compression to ALL summaries
-        compressed_summaries = [s @ compression_matrix for s in summaries]
+        # Compute compression matrix using ONLY train set
+        compression_matrix = self._compute_moped_matrix(train_summaries, delta_theta)
+
+        # Apply compression to test summaries only
+        compressed_summaries = [s @ compression_matrix for s in test_summaries]
 
         return compressed_summaries
 
@@ -80,27 +135,22 @@ class MOPEDCompression(Compression):
         Compute MOPED compression matrix: B = C^{-1} dμ
 
         Args:
-            summaries: List of summary tensors
+            summaries: List of summary tensors (already split, e.g., test set only)
             delta_theta: Step sizes for derivatives
 
         Returns:
             Compression matrix of shape (n_features, n_params)
         """
-        # Split data for compression computation
+        # Extract fiducial and derivative summaries
         vecs_cov = summaries[0]
-        n_s = vecs_cov.shape[0]
-        n_comp = int(self.compress_frac * n_s)
+        perturbed_vecs = summaries[1:]
 
-        # Use first fraction for computing compression matrix
-        comp_cov = vecs_cov[:n_comp]
-        comp_ders = [s[:int(self.compress_frac * s.shape[0])] for s in summaries[1:]]
-
-        # Compute derivatives for compression
-        derivatives = self._compute_derivatives(comp_ders, delta_theta)
+        # Compute derivatives
+        derivatives = self._compute_derivatives(perturbed_vecs, delta_theta)
         mean_derivatives = derivatives.mean(dim=1)  # (n_params, n_features)
 
         # Compute covariance
-        C = self._compute_covariance(comp_cov)
+        C = self._compute_covariance(vecs_cov)
 
         # MOPED compression: B = C^{-1} dμ
         compression_matrix = torch.linalg.solve(C, mean_derivatives.T)  # (n_features, n_params)
