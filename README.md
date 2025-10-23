@@ -20,7 +20,7 @@ The pipeline consists of five customizable components:
 
 ```bash
 # Install dependencies
-pip install torch numpy gudhi powerbox
+pip install torch numpy scipy gudhi multipers powerbox
 
 # Install TopoFisher
 cd TopoFisher
