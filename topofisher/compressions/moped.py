@@ -33,13 +33,17 @@ class MOPEDCompression(Compression):
         Initialize MOPED compression.
 
         Args:
-            train_frac: Fraction of data for training set (discarded, not used for MOPED)
-                       Remaining (1 - train_frac) is validation set, used for computing compression matrix
+            train_frac: Fraction of data for training set
+                       Compression matrix is learned on train set, applied to test set
             clean_data: If True, remove zero-variance features before compression
         """
         super().__init__()
         self.train_frac = train_frac
         self.clean_data = clean_data
+
+    def returns_test_only(self) -> bool:
+        """MOPED splits data and returns only test set."""
+        return True
 
     def split_data(self, summaries: List[torch.Tensor]) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         """

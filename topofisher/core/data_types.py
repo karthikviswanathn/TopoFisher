@@ -2,7 +2,7 @@
 Core data types for TopoFisher.
 """
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import torch
 
 
@@ -43,3 +43,5 @@ class FisherResult:
     constraints: torch.Tensor        # 1-sigma parameter constraints
     bias_error: Optional[torch.Tensor] = None  # Fisher bias error
     fractional_bias: Optional[torch.Tensor] = None  # Fractional bias
+    is_gaussian: bool = True         # Whether compressed features pass Gaussianity test
+    gaussianity_details: Optional[Dict[str, Any]] = None  # Detailed Gaussianity test results

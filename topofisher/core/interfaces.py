@@ -160,6 +160,25 @@ class Compression(nn.Module, ABC):
         """
         return False
 
+    def returns_test_only(self) -> bool:
+        """
+        Return True if this compression splits data and returns only the test set.
+
+        When True, the compression:
+        - Splits summaries internally into train/test
+        - Learns compression on train set
+        - Applies compression to test set
+        - Returns only the test set (smaller than input)
+
+        When False (default), the compression:
+        - Applies compression to all input summaries
+        - Returns all summaries (same size as input)
+
+        Returns:
+            True if compression returns test set only, False if returns all data
+        """
+        return False
+
     def is_initialized(self) -> bool:
         """
         Return True if compression network is initialized.

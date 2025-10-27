@@ -43,13 +43,15 @@ class FisherPipeline(nn.Module):
         self.compression = compression
         self.fisher_analyzer = fisher_analyzer
 
-    def run(self, config: FisherConfig, training_config: Optional[TrainingConfig] = None) -> FisherResult:
+    def run(self, config: FisherConfig, training_config: Optional[TrainingConfig] = None,
+            verbose_gaussianity: bool = False) -> FisherResult:
         """
         Run the full pipeline.
 
         Args:
             config: Fisher configuration with parameters and settings
             training_config: Optional training config for learned compressions
+            verbose_gaussianity: If True, print detailed Gaussianity check results (default False)
 
         Returns:
             FisherResult with Fisher matrix and analysis
@@ -81,21 +83,34 @@ class FisherPipeline(nn.Module):
             training_history = self.compression.train_compression(all_summaries, config.delta_theta, training_config)
 
         # Step 5: Apply compression
-        all_summaries = self.compression(all_summaries, config.delta_theta)
+        compressed_summaries = self.compression(all_summaries, config.delta_theta)
 
-        # Step 6: Fisher analysis
-        result = self.fisher_analyzer(all_summaries, config.delta_theta)
+        # Check if compression returns test set only or all data
+        if self.compression.returns_test_only():
+            train_frac = getattr(self.compression, 'train_frac', 0.5)
+            print(f"\nCompression splits data internally (train_frac={train_frac:.1f})")
+            print(f"  Compression matrix learned on train set ({int(train_frac*100)}% of data)")
+            print(f"  Compressed test set shape: {compressed_summaries[0].shape}")
+            print(f"  Fisher information will be computed on test set only")
+        else:
+            print(f"\nCompressed summary statistics shape: {compressed_summaries[0].shape}")
+            if compressed_summaries[0].shape[0] == config.n_s and compressed_summaries[1].shape[0] == config.n_d:
+                print("WARNING: Using all data for Fisher analysis (no train/test split)")
 
-        # Step 7: Test Gaussianity on test set (if training was done)
-        if training_history is not None and 'test_summaries' in training_history:
+        # Step 6: Gaussianity check (before Fisher analysis)
+        from ..fisher.gaussianity import test_gaussianity
+        if verbose_gaussianity:
             print("\n" + "=" * 80)
-            print("Gaussianity Test on Test Set")
+            print("Gaussianity Check (After Compression)")
             print("=" * 80)
-            from ..fisher.gaussianity import test_gaussianity
+        gauss_results, is_gaussian = test_gaussianity(compressed_summaries, alpha=0.05, mode="summary", verbose=verbose_gaussianity)
 
-            # Compress test summaries and test Gaussianity
-            test_summaries_compressed = self.compression(training_history['test_summaries'], config.delta_theta)
-            test_gaussianity(test_summaries_compressed, alpha=0.05, verbose=True)
+        # Step 7: Fisher analysis
+        result = self.fisher_analyzer(compressed_summaries, config.delta_theta)
+
+        # Add Gaussianity flag and details to result
+        result.is_gaussian = is_gaussian
+        result.gaussianity_details = gauss_results
 
         return result
 
