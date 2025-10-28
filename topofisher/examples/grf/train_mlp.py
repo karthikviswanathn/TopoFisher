@@ -258,7 +258,7 @@ def main():
     print(f"Using device: {device}")
 
     N = 32
-    simulator = GRFSimulator(N=N, dim=2, boxlength=N, device=device)
+    simulator = GRFSimulator(N=N, dim=2, device=device)
     filtration = CubicalLayer(homology_dimensions=[0, 1], min_persistence=[0.0, 0.0])
     vectorization = CombinedVectorization([
         TopKLayer(k=50),

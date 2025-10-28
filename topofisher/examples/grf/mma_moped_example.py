@@ -33,7 +33,7 @@ def main():
 
     # Components
     simulator = GRFSimulator(N=16, dim=2, device=str(device))
-    filtration = MMALayer(homology_dimensions=[0, 1])
+    filtration = MMALayer(homology_dimensions=[0, 1], show_progress=True)
 
     # Optimal k values based on corner count analysis:
     # H0: ~358 corners (use k=100), H1: ~91 corners (use k=50)
@@ -58,8 +58,8 @@ def main():
     config = FisherConfig(
         theta_fid=torch.tensor([1.0, 2.0]),
         delta_theta=torch.tensor([0.1, 0.2]),
-        n_s=1000,
-        n_d=1000,
+        n_s=10000,
+        n_d=10000,
         find_derivative=[True, True],
         seed_cov=42,
         seed_ders=[43, 44]
