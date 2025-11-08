@@ -6,13 +6,13 @@ from .identity import IdentityVectorization
 from .mma_kernel import MMAKernelLayer, MMAGaussianLayer, MMALinearLayer, MMAExponentialLayer
 
 __all__ = [
-    "TopKLayer", 
-    "CombinedVectorization", 
-    "PersistenceImageLayer", 
-    "MMATopKLayer", 
+    "TopKLayer",
+    "CombinedVectorization",
+    "PersistenceImageLayer",
+    "MMATopKLayer",
     "IdentityVectorization",
     "MMAKernelLayer",
-    "MMAGaussianLayer", 
+    "MMAGaussianLayer",
     "MMALinearLayer",
     "MMAExponentialLayer"
 ]

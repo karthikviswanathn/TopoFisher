@@ -27,7 +27,8 @@ class MOPEDCompression(Compression):
     def __init__(
         self,
         train_frac: float = 0.5,
-        clean_data: bool = True
+        clean_data: bool = True,
+        reg: float = 1e-6
     ):
         """
         Initialize MOPED compression.
@@ -36,10 +37,12 @@ class MOPEDCompression(Compression):
             train_frac: Fraction of data for training set
                        Compression matrix is learned on train set, applied to test set
             clean_data: If True, remove zero-variance features before compression
+            reg: Regularization parameter for covariance matrix (C + reg*I) to avoid singularity
         """
         super().__init__()
         self.train_frac = train_frac
         self.clean_data = clean_data
+        self.reg = reg
 
     def returns_test_only(self) -> bool:
         """MOPED splits data and returns only test set."""
@@ -155,6 +158,10 @@ class MOPEDCompression(Compression):
 
         # Compute covariance
         C = self._compute_covariance(vecs_cov)
+
+        # Add regularization to avoid singularity: C → C + reg*I
+        if self.reg > 0:
+            C = C + self.reg * torch.eye(C.shape[0], device=C.device, dtype=C.dtype)
 
         # MOPED compression: B = C^{-1} dμ
         compression_matrix = torch.linalg.solve(C, mean_derivatives.T)  # (n_features, n_params)
