@@ -3,6 +3,8 @@ MMA Kernel vectorization layer.
 
 Self-contained implementation with all kernel and distance functions included.
 Fully GPU-compatible by preserving tensor devices throughout computation.
+
+Updated to accept MMA PyModule objects directly and maintain differentiability.
 """
 import torch
 import torch.nn as nn
@@ -119,13 +121,17 @@ class MMAKernelLayer(nn.Module):
     """
     MMA Kernel vectorization for a single homology dimension.
 
-    Converts MMA corner data into a fixed-size vector by evaluating a kernel function
+    Converts MMA into a fixed-size vector by evaluating a kernel function
     on a regular grid in the 2-parameter space. Fully GPU-compatible.
+    
+    Can accept either:
+    1. MMA PyModule objects + field + gradient (new, maintains differentiability)
+    2. Corner data directly (old format, for backwards compatibility)
 
     Use with CombinedVectorization to handle multiple homology dimensions:
         vectorization = CombinedVectorization([
-            MMAGaussianLayer(resolution=30, bandwidth=0.05),  # H0
-            MMAGaussianLayer(resolution=30, bandwidth=0.05)   # H1
+            MMAKernelLayer(resolution=30, bandwidth=0.05),  # H0
+            MMAKernelLayer(resolution=30, bandwidth=0.05)   # H1
         ])
     """
 
@@ -137,24 +143,21 @@ class MMAKernelLayer(nn.Module):
         p: float = 2,
         signed: bool = False,
         return_flat: bool = True,
-        fixed_box: Optional[np.ndarray] = None
+        fixed_box: Optional[np.ndarray] = None,
+        homology_dimension: int = 0
     ):
         """
         Initialize MMA Kernel layer.
 
         Args:
-            kernel: Type of kernel function:
-                - 'gaussian': exp(-0.5 * (distance/bandwidth)^2) - smooth, differentiable
-                - 'linear': max(0, (bandwidth - distance) / bandwidth) - compact support
-                - 'exponential': exp(-distance/bandwidth) - heavier tails than gaussian
-            resolution: Grid resolution for evaluation (creates resolution x resolution grid)
-            bandwidth: Kernel bandwidth parameter (controls kernel width)
-            p: Power for interleaving weights (weights^p in kernel sum)
-            signed: Whether to use signed kernel (assigns sign based on distance direction)
-            return_flat: If True, returns flattened vector of size resolution^2
-            fixed_box: Optional fixed bounding box of shape (2, 2) [[min_field, max_field], [min_grad, max_grad]]
-                      If provided, all samples use this box. If None, compute per-sample boxes.
-                      Use fit() method to compute from samples.
+            kernel: Type of kernel function
+            resolution: Grid resolution
+            bandwidth: Kernel bandwidth parameter
+            p: Power for interleaving weights
+            signed: Whether to use signed kernel
+            return_flat: If True, returns flattened vector
+            fixed_box: Optional fixed bounding box
+            homology_dimension: Which homology dimension (for MMA objects)
         """
         super().__init__()
 
@@ -165,6 +168,7 @@ class MMAKernelLayer(nn.Module):
         self.signed = signed
         self.return_flat = return_flat
         self.fixed_box = fixed_box
+        self.homology_dimension = homology_dimension
 
         # Select kernel function
         self.kernel_func = {
@@ -173,165 +177,170 @@ class MMAKernelLayer(nn.Module):
             'exponential': exponential_kernel
         }[kernel]
 
-        # Output features: resolution^2 for flat vector
+        # Output features
         self.n_features = resolution * resolution if return_flat else None
 
-    def fit(self, corner_data: List[List[tuple]]) -> 'MMAKernelLayer':
+    def forward(self, data, field=None, gradient=None) -> torch.Tensor:
         """
-        Fit the bounding box from sample data.
+        Vectorize MMA using kernel methods.
+        
+        Can be called in two ways:
+        1. forward(mma_objects, field, gradient) - NEW
+        2. forward(corner_data) - OLD
 
         Args:
-            corner_data: List[sample][interval] -> (births, deaths)
-                        Corner data from multiple samples to compute bounding box
+            data: MMA objects or corner data
+            field: Original field tensor (if MMA objects)
+            gradient: Original gradient tensor (if MMA objects)
 
         Returns:
-            self (for method chaining)
+            Kernel vectorization tensor
         """
-        all_corners = []
+        # Detect input type
+        if len(data) > 0 and hasattr(data[0], 'get_module_of_degree'):
+            # New format: MMA PyModule objects
+            if field is None or gradient is None:
+                raise ValueError("field and gradient required for MMA objects")
+            return self._forward_mma_objects(data, field, gradient)
+        else:
+            # Old format: corner data
+            return self._forward_corner_data(data)
 
-        for sample in corner_data:
-            for births, deaths in sample:
-                if births.numel() > 0:
-                    all_corners.append(births)
-                if deaths.numel() > 0:
-                    all_corners.append(deaths)
+    def _forward_mma_objects(self, mma_objects, field, gradient) -> torch.Tensor:
+        """Process MMA PyModule objects (maintains differentiability)."""
+        from multipers.torch.diff_grids import get_grid, evaluate_mod_in_grid
+        
+        n_samples = len(mma_objects)
+        features = []
+        
+        # Ensure batch dimension
+        if field.ndim == 2:
+            field = field.unsqueeze(0)
+        if gradient.ndim == 2:
+            gradient = gradient.unsqueeze(0)
+        
+        device = field.device
+        
+        for sample_idx in range(n_samples):
+            module = mma_objects[sample_idx].get_module_of_degree(self.homology_dimension)
+            
+            # Create grid - NO detach() to maintain gradients!
+            field_cpu = field[sample_idx].cpu()
+            gradient_cpu = gradient[sample_idx].cpu()
+            filtration_values = [field_cpu.flatten(), gradient_cpu.flatten()]
+            
+            grid_function = get_grid('exact')
+            grid = grid_function(filtration_values)
+            
+            # Evaluate module - maintains differentiability!
+            result = evaluate_mod_in_grid(module, grid)
+            
+            # Extract intervals
+            intervals = []
+            for births, deaths in result:
+                births_dev = births.to(device) if births.numel() > 0 else births
+                deaths_dev = deaths.to(device) if deaths.numel() > 0 else deaths
+                
+                # Filter infinites
+                if births_dev.numel() > 0:
+                    mask = torch.isfinite(births_dev).all(dim=1)
+                    births_dev = births_dev[mask]
+                
+                if deaths_dev.numel() > 0:
+                    mask = torch.isfinite(deaths_dev).all(dim=1)
+                    deaths_dev = deaths_dev[mask]
+                
+                if births_dev.numel() > 0 or deaths_dev.numel() > 0:
+                    intervals.append((births_dev, deaths_dev))
+            
+            # Process with kernel
+            vec = self._process_intervals(intervals, device)
+            features.append(vec)
+        
+        return torch.stack(features)
 
-        if len(all_corners) == 0:
-            raise ValueError("No corners found in data to fit bounding box")
-
-        all_corners_cat = torch.cat(all_corners, dim=0)
-        box_min = all_corners_cat.min(dim=0).values.cpu().numpy()
-        box_max = all_corners_cat.max(dim=0).values.cpu().numpy()
-        self.fixed_box = np.stack([box_min, box_max]).T
-
-        print(f"Fitted bounding box: [{box_min[0]:.3f}, {box_max[0]:.3f}] × [{box_min[1]:.3f}, {box_max[1]:.3f}]")
-
-        return self
-
-    def forward(self, corner_data: List[List[tuple]]) -> torch.Tensor:
-        """
-        Vectorize MMA corners using kernel methods.
-
-        Args:
-            corner_data: List[sample][interval] -> (births, deaths)
-                        where births and deaths are tensors of shape (n_corners, 2)
-                        This is the corner data for a SINGLE homology dimension.
-
-        Returns:
-            Tensor of shape (n_samples, resolution^2) if return_flat=True
-            Tensor of shape (n_samples, resolution, resolution) if return_flat=False
-
-        Note:
-            Fully GPU-compatible. If input data is on GPU, all computations
-            will be performed on GPU.
-        """
+    def _forward_corner_data(self, corner_data: List[List[tuple]]) -> torch.Tensor:
+        """Process corner data (old format, backwards compatible)."""
         n_samples = len(corner_data)
         features = []
 
         for sample_idx in range(n_samples):
-            # Get intervals for this sample (for single homology dimension)
             intervals = corner_data[sample_idx]
-
-            if len(intervals) == 0:
-                # No intervals - return zeros
-                if self.return_flat:
-                    vec = torch.zeros(self.resolution * self.resolution)
-                else:
-                    vec = torch.zeros(self.resolution, self.resolution)
-                features.append(vec)
-                continue
-
-            # Collect all corners to compute bounding box
-            all_corners = []
-            for births, deaths in intervals:
-                if births.numel() > 0:
-                    all_corners.append(births)
-                if deaths.numel() > 0:
-                    all_corners.append(deaths)
-
-            if len(all_corners) == 0:
-                # No corners - return zeros
-                if self.return_flat:
-                    vec = torch.zeros(self.resolution * self.resolution)
-                else:
-                    vec = torch.zeros(self.resolution, self.resolution)
-                features.append(vec)
-                continue
-
-            all_corners_cat = torch.cat(all_corners, dim=0)
-
-            # Use fixed box if available, otherwise compute per-sample box
-            if self.fixed_box is not None:
-                box = self.fixed_box
-            else:
-                # Create bounding box (no margin - matches vectorize_kernel behavior)
-                box_min = all_corners_cat.min(dim=0).values.cpu().numpy()
-                box_max = all_corners_cat.max(dim=0).values.cpu().numpy()
-                box = np.stack([box_min, box_max]).T
-
-            # Create evaluation grid using multipers
-            R = grids.compute_grid(box, strategy="regular", resolution=self.resolution)
-            R_dense = grids.todense(R)
-            R_dense = torch.from_numpy(R_dense).to(torch.float32)
-
-            # Move to same device as data
-            device = all_corners_cat.device
-            R_dense = R_dense.to(device)
-
-            # Compute interleaving weights (GPU-compatible)
-            w = interleaving_weights(intervals)
-
-            # Compute distances (GPU-compatible)
-            SD = distance_to(intervals, R_dense)
-
-            # Apply kernel function
-            img = self.kernel_func(SD, w, self.bandwidth, p=self.p, signed=self.signed)
-
-            # Reshape if needed
-            if not self.return_flat:
-                img = img.reshape(self.resolution, self.resolution)
-
-            features.append(img)
+            device = intervals[0][0].device if len(intervals) > 0 and intervals[0][0].numel() > 0 else torch.device('cpu')
+            vec = self._process_intervals(intervals, device)
+            features.append(vec)
 
         return torch.stack(features)
 
+    def _process_intervals(self, intervals, device):
+        """Common kernel processing logic."""
+        if len(intervals) == 0:
+            # No intervals - return zeros
+            if self.return_flat:
+                return torch.zeros(self.resolution * self.resolution, device=device)
+            else:
+                return torch.zeros(self.resolution, self.resolution, device=device)
+
+        # Collect corners for bounding box
+        all_corners = []
+        for births, deaths in intervals:
+            if births.numel() > 0:
+                all_corners.append(births)
+            if deaths.numel() > 0:
+                all_corners.append(deaths)
+
+        if len(all_corners) == 0:
+            if self.return_flat:
+                return torch.zeros(self.resolution * self.resolution, device=device)
+            else:
+                return torch.zeros(self.resolution, self.resolution, device=device)
+
+        all_corners_cat = torch.cat(all_corners, dim=0)
+
+        # Use fixed box if available
+        if self.fixed_box is not None:
+            box = self.fixed_box
+        else:
+            box_min = all_corners_cat.min(dim=0).values.detach().cpu().numpy()
+            box_max = all_corners_cat.max(dim=0).values.detach().cpu().numpy()
+            box = np.stack([box_min, box_max]).T
+
+        # Create evaluation grid
+        R = grids.compute_grid(box, strategy="regular", resolution=self.resolution)
+        R_dense = grids.todense(R)
+        R_dense = torch.from_numpy(R_dense).to(torch.float32).to(device)
+
+        # Compute weights and distances
+        w = interleaving_weights(intervals)
+        SD = distance_to(intervals, R_dense)
+
+        # Apply kernel
+        img = self.kernel_func(SD, w, self.bandwidth, p=self.p, signed=self.signed)
+
+        if not self.return_flat:
+            img = img.reshape(self.resolution, self.resolution)
+
+        return img
+
     def __repr__(self):
         return (f"MMAKernelLayer(kernel='{self.kernel}', resolution={self.resolution}, "
-                f"bandwidth={self.bandwidth}, p={self.p}, signed={self.signed})")
+                f"bandwidth={self.bandwidth}, homology_dimension={self.homology_dimension})")
 
 
-# Convenience classes for specific kernels
+# Convenience classes
 class MMAGaussianLayer(MMAKernelLayer):
-    """
-    MMA Gaussian Kernel Vectorization Layer.
-
-    Uses Gaussian kernel: exp(-0.5 * (distance/bandwidth)^2)
-    Recommended for gradient-based learning due to smoothness.
-    Fully GPU-compatible.
-    """
-    def __init__(self, resolution=30, bandwidth=0.05, p=2, signed=False, return_flat=True, fixed_box=None):
-        super().__init__('gaussian', resolution, bandwidth, p, signed, return_flat, fixed_box)
+    """Gaussian kernel vectorization."""
+    def __init__(self, resolution=30, bandwidth=0.05, p=2, signed=False, return_flat=True, fixed_box=None, homology_dimension=0):
+        super().__init__('gaussian', resolution, bandwidth, p, signed, return_flat, fixed_box, homology_dimension)
 
 
 class MMALinearLayer(MMAKernelLayer):
-    """
-    MMA Linear Kernel Vectorization Layer.
-
-    Uses linear kernel: max(0, (bandwidth - distance) / bandwidth)
-    Has compact support (zero outside bandwidth), computationally faster.
-    Fully GPU-compatible.
-    """
-    def __init__(self, resolution=30, bandwidth=0.05, p=2, signed=False, return_flat=True, fixed_box=None):
-        super().__init__('linear', resolution, bandwidth, p, signed, return_flat, fixed_box)
+    """Linear kernel vectorization."""
+    def __init__(self, resolution=30, bandwidth=0.05, p=2, signed=False, return_flat=True, fixed_box=None, homology_dimension=0):
+        super().__init__('linear', resolution, bandwidth, p, signed, return_flat, fixed_box, homology_dimension)
 
 
 class MMAExponentialLayer(MMAKernelLayer):
-    """
-    MMA Exponential Kernel Vectorization Layer.
-
-    Uses exponential kernel: exp(-distance/bandwidth)
-    Compromise between Gaussian (smooth) and Linear (compact support).
-    Fully GPU-compatible.
-    """
-    def __init__(self, resolution=30, bandwidth=0.05, p=2, signed=False, return_flat=True, fixed_box=None):
-        super().__init__('exponential', resolution, bandwidth, p, signed, return_flat, fixed_box)
+    """Exponential kernel vectorization."""
+    def __init__(self, resolution=30, bandwidth=0.05, p=2, signed=False, return_flat=True, fixed_box=None, homology_dimension=0):
+        super().__init__('exponential', resolution, bandwidth, p, signed, return_flat, fixed_box, homology_dimension)
