@@ -1,4 +1,4 @@
-from .topk import TopKLayer
+from .topk import TopKLayer, TopKBirthsDeathsLayer
 from .combined import CombinedVectorization
 from .persistence_image import PersistenceImageLayer
 from .mma_topk import MMATopKLayer
@@ -7,6 +7,7 @@ from .mma_kernel import MMAKernelLayer, MMAGaussianLayer, MMALinearLayer, MMAExp
 
 __all__ = [
     "TopKLayer",
+    "TopKBirthsDeathsLayer",
     "CombinedVectorization",
     "PersistenceImageLayer",
     "MMATopKLayer",

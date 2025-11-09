@@ -86,16 +86,16 @@ class FisherPipeline(nn.Module):
         compressed_summaries = self.compression(all_summaries, config.delta_theta)
 
         # Check if compression returns test set only or all data
-        if self.compression.returns_test_only():
-            train_frac = getattr(self.compression, 'train_frac', 0.5)
-            print(f"\nCompression splits data internally (train_frac={train_frac:.1f})")
-            print(f"  Compression matrix learned on train set ({int(train_frac*100)}% of data)")
-            print(f"  Compressed test set shape: {compressed_summaries[0].shape}")
-            print(f"  Fisher information will be computed on test set only")
-        else:
-            print(f"\nCompressed summary statistics shape: {compressed_summaries[0].shape}")
-            if compressed_summaries[0].shape[0] == config.n_s and compressed_summaries[1].shape[0] == config.n_d:
-                print("WARNING: Using all data for Fisher analysis (no train/test split)")
+        # if self.compression.returns_test_only():
+        #     train_frac = getattr(self.compression, 'train_frac', 0.5)
+        #     print(f"\nCompression splits data internally (train_frac={train_frac:.1f})")
+        #     print(f"  Compression matrix learned on train set ({int(train_frac*100)}% of data)")
+        #     print(f"  Compressed test set shape: {compressed_summaries[0].shape}")
+        #     print(f"  Fisher information will be computed on test set only")
+        # else:
+        #     print(f"\nCompressed summary statistics shape: {compressed_summaries[0].shape}")
+        #     if compressed_summaries[0].shape[0] == config.n_s and compressed_summaries[1].shape[0] == config.n_d:
+        #         print("WARNING: Using all data for Fisher analysis (no train/test split)")
 
         # Step 6: Gaussianity check (before Fisher analysis)
         from ..fisher.gaussianity import test_gaussianity
