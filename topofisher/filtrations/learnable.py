@@ -172,8 +172,7 @@ class LearnableFiltration(nn.Module):
         kernel_size: int = 3,
         activation: str = 'relu',
         upscale_factor: int = 2,
-        min_persistence: Optional[List[float]] = None,
-        homology_coeff_field: int = 11
+        min_persistence: Optional[List[float]] = None
     ):
         """
         Initialize learnable filtration.
@@ -186,7 +185,6 @@ class LearnableFiltration(nn.Module):
             activation: CNN activation function
             upscale_factor: CNN upscaling factor (1=no upscale, 2=double size)
             min_persistence: Minimum persistence threshold for each dimension
-            homology_coeff_field: Homology field coefficient
 
         Note:
             BatchNorm is NOT used as it's incompatible with Fisher information
@@ -211,8 +209,7 @@ class LearnableFiltration(nn.Module):
         # Differentiable cubical persistence layer
         self.cubical = DifferentiableCubicalLayer(
             homology_dimensions=homology_dimensions,
-            min_persistence=min_persistence,
-            homology_coeff_field=homology_coeff_field
+            min_persistence=min_persistence
         )
 
     def forward(self, x: torch.Tensor) -> List[List[torch.Tensor]]:

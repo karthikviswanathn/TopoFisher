@@ -41,3 +41,5 @@ plots/
 ai-code/
 
 scratchpad.txt
+*train_mma.py
+*mma_kernel_gpu.py

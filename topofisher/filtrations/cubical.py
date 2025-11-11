@@ -19,8 +19,7 @@ class CubicalLayer(nn.Module):
     def __init__(
         self,
         homology_dimensions: List[int],
-        min_persistence: Optional[List[float]] = None,
-        homology_coeff_field: int = 11
+        min_persistence: Optional[List[float]] = None
     ):
         """
         Initialize cubical complex layer.
@@ -29,12 +28,10 @@ class CubicalLayer(nn.Module):
             homology_dimensions: List of homology dimensions to compute (e.g., [0, 1])
             min_persistence: Minimum persistence threshold for each dimension
                            (default: 0 for all dimensions)
-            homology_coeff_field: Homology field coefficient (must be prime, max 46337)
         """
         super().__init__()
         self.dimensions = homology_dimensions
         self.min_persistence = min_persistence if min_persistence is not None else [0.0] * len(self.dimensions)
-        self.hcf = homology_coeff_field
 
         assert len(self.min_persistence) == len(self.dimensions), \
             "min_persistence must have same length as homology_dimensions"
@@ -111,7 +108,7 @@ class CubicalLayer(nn.Module):
         )
 
         # Compute persistence
-        cubical_complex.compute_persistence(homology_coeff_field=self.hcf)
+        cubical_complex.compute_persistence()
 
         # Extract diagrams for each homology dimension
         diagrams = []

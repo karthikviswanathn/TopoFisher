@@ -44,8 +44,7 @@ class DifferentiableCubicalLayer(nn.Module):
     def __init__(
         self,
         homology_dimensions: List[int],
-        min_persistence: Optional[List[float]] = None,
-        homology_coeff_field: int = 11
+        min_persistence: Optional[List[float]] = None
     ):
         """
         Initialize differentiable cubical layer.
@@ -53,12 +52,10 @@ class DifferentiableCubicalLayer(nn.Module):
         Args:
             homology_dimensions: List of homology dimensions to compute
             min_persistence: Minimum persistence threshold for each dimension
-            homology_coeff_field: Homology field coefficient (prime, max 46337)
         """
         super().__init__()
         self.dimensions = homology_dimensions
         self.min_persistence = min_persistence if min_persistence is not None else [0.0] * len(self.dimensions)
-        self.hcf = homology_coeff_field
 
         assert len(self.min_persistence) == len(self.dimensions), \
             "min_persistence must have same length as homology_dimensions"
@@ -141,7 +138,7 @@ class DifferentiableCubicalLayer(nn.Module):
             dimensions=[H, W],
             top_dimensional_cells=X_numpy
         )
-        cubical_complex.compute_persistence(homology_coeff_field=self.hcf)
+        cubical_complex.compute_persistence()
 
         # Step 3: For each homology dimension, map values to indices and gather
         diagrams = []

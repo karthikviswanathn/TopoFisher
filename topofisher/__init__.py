@@ -12,11 +12,13 @@ from .core.cached_pipeline import (
 from .core.learnable_filtration_pipeline import LearnableFiltrationPipeline
 from .simulators.grf import GRFSimulator
 from .simulators.gaussian_vector import GaussianVectorSimulator
+from .simulators.noisy_ring import NoisyRingSimulator
 from .filtrations.cubical import CubicalLayer
 from .filtrations.mma import MMALayer
 from .filtrations.identity import IdentityFiltration
 from .filtrations.differentiable_cubical import DifferentiableCubicalLayer
 from .filtrations.learnable import LearnableFiltration, CNNUpsampler
+from .filtrations.alpha import AlphaComplexLayer
 from .vectorizations.topk import TopKLayer, TopKBirthsDeathsLayer
 from .vectorizations.combined import CombinedVectorization
 from .vectorizations.persistence_image import PersistenceImageLayer
@@ -53,12 +55,14 @@ __all__ = [
     "generate_and_save_diagrams",
     "GRFSimulator",
     "GaussianVectorSimulator",
+    "NoisyRingSimulator",
     "CubicalLayer",
     "MMALayer",
     "IdentityFiltration",
     "DifferentiableCubicalLayer",
     "LearnableFiltration",
     "CNNUpsampler",
+    "AlphaComplexLayer",
     "TopKLayer",
     "TopKBirthsDeathsLayer",
     "CombinedVectorization",

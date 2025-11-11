@@ -3,6 +3,7 @@ from .mma import MMALayer
 from .identity import IdentityFiltration
 from .differentiable_cubical import DifferentiableCubicalLayer
 from .learnable import LearnableFiltration, CNNUpsampler
+from .alpha import AlphaComplexLayer
 
 __all__ = [
     "CubicalLayer",
@@ -10,5 +11,6 @@ __all__ = [
     "IdentityFiltration",
     "DifferentiableCubicalLayer",
     "LearnableFiltration",
-    "CNNUpsampler"
+    "CNNUpsampler",
+    "AlphaComplexLayer"
 ]
