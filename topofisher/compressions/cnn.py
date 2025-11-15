@@ -111,8 +111,7 @@ class CNNCompression(Compression):
 
     def forward(
         self,
-        summaries: List[torch.Tensor],
-        delta_theta: Optional[torch.Tensor] = None
+        summaries: List[torch.Tensor]
     ) -> List[torch.Tensor]:
         """
         Apply CNN compression to persistence image summaries.
@@ -120,7 +119,6 @@ class CNNCompression(Compression):
         Args:
             summaries: List of persistence image tensors.
                       Each tensor has shape (batch, n_channels, n_pixels, n_pixels)
-            delta_theta: Ignored (kept for interface compatibility)
 
         Returns:
             Compressed summaries with shape (batch, output_dim)

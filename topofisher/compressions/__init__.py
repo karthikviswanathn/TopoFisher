@@ -1,47 +1,39 @@
 """
 Compression methods for TopoFisher pipeline.
-
-This module provides the explicit compression stage in the pipeline:
-    simulator → filtration → vectorization → COMPRESSION → fisher analysis
-
-Compression methods:
-- IdentityCompression: No-op pass-through (no compression)
-- MOPEDCompression: Maximum a posteriori with Exponential Distribution
-- MLPCompression: Multi-layer Perceptron learned compression
-- CNNCompression: Convolutional Neural Network for persistence images
-- InceptBlockCompression: IMNN-style Inception network for persistence images
 """
+from abc import ABC, abstractmethod
 from typing import List, Optional
 import torch
+import torch.nn as nn
 
-# Import base class from core
-from ..core.interfaces import Compression
+
+class Compression(nn.Module, ABC):
+    """Base class for compression methods."""
+
+    @abstractmethod
+    def forward(
+        self,
+        summaries: List[torch.Tensor]
+    ) -> List[torch.Tensor]:
+        """
+        Apply compression to summaries.
+
+        Args:
+            summaries: [fid, minus_0, plus_0, minus_1, plus_1, ...]
+
+        Returns:
+            Compressed summaries with same structure
+        """
+        pass
 
 
 class IdentityCompression(Compression):
-    """
-    No-op compression that passes through summaries unchanged.
-
-    Useful for:
-    - Baseline comparisons
-    - Backward compatibility with pipelines that don't need compression
-    """
+    """Pass-through compression (no compression)."""
 
     def forward(
         self,
-        summaries: List[torch.Tensor],
-        delta_theta: Optional[torch.Tensor] = None
+        summaries: List[torch.Tensor]
     ) -> List[torch.Tensor]:
-        """
-        Pass through summaries unchanged.
-
-        Args:
-            summaries: List of summary tensors
-            delta_theta: Ignored (kept for interface compatibility)
-
-        Returns:
-            Same summaries unchanged
-        """
         return summaries
 
 
@@ -49,13 +41,11 @@ class IdentityCompression(Compression):
 from .moped import MOPEDCompression
 from .mlp import MLPCompression
 from .cnn import CNNCompression
-from .inception import InceptBlockCompression
 
 __all__ = [
-    "Compression",
-    "IdentityCompression",
-    "MOPEDCompression",
-    "MLPCompression",
-    "CNNCompression",
-    "InceptBlockCompression",
+    'Compression',
+    'IdentityCompression',
+    'MOPEDCompression',
+    'MLPCompression',
+    'CNNCompression',
 ]

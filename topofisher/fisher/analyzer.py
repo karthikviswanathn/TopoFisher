@@ -4,7 +4,7 @@ Fisher information analysis.
 from typing import List
 import torch
 import torch.nn as nn
-from ..core.data_types import FisherResult
+from ..pipelines.configs.data_types import FisherResult
 
 
 class FisherAnalyzer(nn.Module):

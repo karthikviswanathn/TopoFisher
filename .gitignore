@@ -43,3 +43,8 @@ ai-code/
 scratchpad.txt
 *train_mma.py
 *mma_kernel_gpu.py
+
+# Old codebase (for reference during redesign)
+topofisher_old/
+
+experiments/*

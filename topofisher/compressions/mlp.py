@@ -3,6 +3,8 @@ MLP-based learned compression.
 
 Multi-layer Perceptron trained to maximize Fisher information.
 Typically trained on Top-K vectorizations of persistence diagrams.
+
+Uses PyTorch's nn.LazyLinear for automatic dimension inference on first forward pass.
 """
 from typing import List, Optional, Union
 from pathlib import Path
@@ -16,14 +18,13 @@ class MLPCompression(Compression):
     """
     Multi-layer Perceptron for compressing summaries to maximize Fisher information.
 
-    This is a learned compression that can be trained using pipeline.fit().
-    Supports lazy initialization: dimensions can be inferred from data.
+    Uses PyTorch's lazy initialization - input dimension is automatically inferred
+    on the first forward pass. This eliminates manual initialization tracking.
     """
 
     def __init__(
         self,
-        input_dim: Optional[int] = None,
-        output_dim: Optional[int] = None,
+        output_dim: int,
         hidden_dims: Optional[List[int]] = None,
         dropout: float = 0.2
     ):
@@ -31,99 +32,77 @@ class MLPCompression(Compression):
         Initialize MLP compression.
 
         Args:
-            input_dim: Input feature dimension (None for lazy initialization)
-            output_dim: Output dimension, typically n_params (None for lazy initialization)
+            output_dim: Output dimension (typically n_params)
             hidden_dims: List of hidden layer dimensions.
                         None or [] for linear compression (no hidden layers)
                         [h1] for 1 hidden layer, [h1, h2] for 2 hidden layers, etc.
             dropout: Dropout probability (default 0.2)
         """
         super().__init__()
-        self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dims = hidden_dims if hidden_dims is not None else []
         self.dropout_prob = dropout
-        self._initialized = False
-        self.network = None
-        self._device = None  # Track device for lazy initialization
 
-        # If dimensions provided, initialize network now
-        if input_dim is not None and output_dim is not None:
-            self._build_network(input_dim, output_dim)
+        # Build network
+        self.network = self._build_network()
 
-    def _build_network(self, input_dim: int, output_dim: int):
-        """Build the MLP network with given dimensions."""
+    def _build_network(self) -> nn.Sequential:
+        """Build MLP network with lazy first layer."""
         layers = []
+
         if not self.hidden_dims:
             # Linear compression (no hidden layers)
-            layers.append(nn.Linear(input_dim, output_dim))
+            layers.append(nn.LazyLinear(self.output_dim))
         else:
-            # Add hidden layers
-            prev_dim = input_dim
-            for h_dim in self.hidden_dims:
-                layers.append(nn.Linear(prev_dim, h_dim))
+            # First layer is lazy (input dimension inferred on first forward)
+            layers.append(nn.LazyLinear(self.hidden_dims[0]))
+            layers.append(nn.LeakyReLU(negative_slope=0.01))
+            layers.append(nn.Dropout(self.dropout_prob))
+
+            # Middle layers are regular (dimensions known)
+            for i in range(len(self.hidden_dims) - 1):
+                layers.append(nn.Linear(self.hidden_dims[i], self.hidden_dims[i + 1]))
                 layers.append(nn.LeakyReLU(negative_slope=0.01))
                 layers.append(nn.Dropout(self.dropout_prob))
-                prev_dim = h_dim
-            layers.append(nn.Linear(prev_dim, output_dim))
 
-        self.network = nn.Sequential(*layers)
+            # Final layer
+            layers.append(nn.Linear(self.hidden_dims[-1], self.output_dim))
 
-        # Move network to stored device if available
-        if self._device is not None:
-            self.network.to(self._device)
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self._initialized = True
+        return nn.Sequential(*layers)
 
     def is_trainable(self) -> bool:
         """Return True since MLP compression requires training."""
         return True
 
     def is_initialized(self) -> bool:
-        """Return True if network has been initialized."""
-        return self._initialized
-
-    def to(self, device):
-        """Override to() to track device for lazy initialization."""
-        self._device = device
-        return super().to(device)
-
-    def initialize(self, input_dim: int, output_dim: int) -> None:
         """
-        Initialize network with inferred dimensions.
+        Check if lazy layers have been materialized.
 
-        Args:
-            input_dim: Input feature dimension
-            output_dim: Output dimension (typically n_params)
+        Returns:
+            True if first forward pass has occurred and dimensions are known
         """
-        if self._initialized:
-            raise RuntimeError("MLPCompression already initialized")
-        self._build_network(input_dim, output_dim)
+        first_layer = self.network[0]
+        if isinstance(first_layer, nn.LazyLinear):
+            return not first_layer.has_uninitialized_params()
+        return True
 
     def forward(
         self,
-        summaries: List[torch.Tensor],
-        delta_theta: Optional[torch.Tensor] = None
+        summaries: List[torch.Tensor]
     ) -> List[torch.Tensor]:
         """
         Apply MLP compression to summaries.
 
+        On first call, lazy layers are automatically initialized based on input dimensions.
+
         Args:
             summaries: List of summary tensors
-            delta_theta: Ignored (kept for interface compatibility)
 
         Returns:
             Compressed summaries
         """
-        if not self._initialized:
-            raise RuntimeError(
-                "MLPCompression not initialized. Call initialize(input_dim, output_dim) "
-                "or use pipeline.fit() to automatically initialize."
-            )
-
         # Apply network to each summary tensor
+        # First forward automatically initializes lazy layers
         compressed = [self.network(s) for s in summaries]
         return compressed
 
@@ -151,15 +130,14 @@ class MLPCompression(Compression):
 
         arch = checkpoint['architecture']
 
-        # Create instance
+        # Create instance (dimensions will be inferred from state_dict)
         model = cls(
-            input_dim=arch['input_dim'],
             output_dim=arch['output_dim'],
             hidden_dims=arch.get('hidden_dims'),
             dropout=arch.get('dropout', 0.2)
         )
 
-        # Load state dict
+        # Load state dict (this will materialize lazy layers)
         model.load_state_dict(checkpoint['state_dict'])
 
         return model
@@ -171,16 +149,23 @@ class MLPCompression(Compression):
         Args:
             path: Path to save model (.pth or .pt file)
         """
-        if not self._initialized:
-            raise RuntimeError("Cannot save uninitialized MLPCompression")
+        if not self.is_initialized():
+            raise RuntimeError(
+                "Cannot save uninitialized MLPCompression. "
+                "Run a forward pass first to initialize lazy layers."
+            )
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Get input dimension from materialized first layer
+        first_layer = self.network[0]
+        input_dim = first_layer.in_features
+
         checkpoint = {
             'state_dict': self.state_dict(),
             'architecture': {
-                'input_dim': self.input_dim,
+                'input_dim': input_dim,
                 'output_dim': self.output_dim,
                 'hidden_dims': self.hidden_dims,
                 'dropout': self.dropout_prob
@@ -190,13 +175,18 @@ class MLPCompression(Compression):
         torch.save(checkpoint, path)
 
     def __repr__(self):
-        if not self._initialized:
+        if not self.is_initialized():
             if self.hidden_dims:
-                return f"MLPCompression(uninitialized, hidden_dims={self.hidden_dims}, dropout={self.dropout_prob})"
+                return f"MLPCompression(uninitialized, hidden_dims={self.hidden_dims}, output_dim={self.output_dim}, dropout={self.dropout_prob})"
             else:
-                return f"MLPCompression(uninitialized, linear)"
-        elif not self.hidden_dims:
-            return f"MLPCompression(Linear: {self.input_dim} → {self.output_dim})"
+                return f"MLPCompression(uninitialized, linear, output_dim={self.output_dim})"
         else:
-            dims_str = f"{self.input_dim} → " + " → ".join(map(str, self.hidden_dims)) + f" → {self.output_dim}"
-            return f"MLPCompression({dims_str}, dropout={self.dropout_prob})"
+            # Get input dimension from materialized first layer
+            first_layer = self.network[0]
+            input_dim = first_layer.in_features
+
+            if not self.hidden_dims:
+                return f"MLPCompression(Linear: {input_dim} → {self.output_dim})"
+            else:
+                dims_str = f"{input_dim} → " + " → ".join(map(str, self.hidden_dims)) + f" → {self.output_dim}"
+                return f"MLPCompression({dims_str}, dropout={self.dropout_prob})"

@@ -233,18 +233,6 @@ class LearnableFiltration(nn.Module):
 
         return diagrams
 
-    def compute_diagrams(self, data: torch.Tensor) -> List[List[torch.Tensor]]:
-        """
-        Alias for forward() to match Filtration interface.
-
-        Args:
-            data: Input data of shape (n_samples, *data_shape)
-
-        Returns:
-            List of lists of persistence diagrams
-        """
-        return self.forward(data)
-
     def get_output_size(self) -> int:
         """Return the size of the transformed field."""
         return self.output_size

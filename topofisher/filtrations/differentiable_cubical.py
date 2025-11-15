@@ -188,15 +188,3 @@ class DifferentiableCubicalLayer(nn.Module):
             diagrams.append(diagram)
 
         return diagrams
-
-    def compute_diagrams(self, data: torch.Tensor) -> List[List[torch.Tensor]]:
-        """
-        Alias for forward() to match Filtration interface.
-
-        Args:
-            data: Input data of shape (n_samples, *data_shape)
-
-        Returns:
-            List of lists of persistence diagrams
-        """
-        return self.forward(data)
