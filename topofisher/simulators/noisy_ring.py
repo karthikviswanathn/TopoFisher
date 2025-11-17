@@ -9,7 +9,7 @@ from typing import Optional
 import torch
 import numpy as np
 
-from ..core.interfaces import Simulator
+from . import Simulator
 
 
 class NoisyRingSimulator(Simulator):

@@ -8,7 +8,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from ..core.interfaces import Simulator
+from . import Simulator
 
 
 class GaussianVectorSimulator(Simulator):

@@ -10,7 +10,7 @@ try:
 except ImportError:
     raise ImportError("powerbox is required for GRF simulation. Install with: pip install powerbox")
 
-from ..core.interfaces import Simulator
+from . import Simulator
 
 
 class GRFSimulator(Simulator):
@@ -49,6 +49,11 @@ class GRFSimulator(Simulator):
         self.ensure_physical = ensure_physical
         self.vol_normalised_power = vol_normalised_power
         self.device = device
+
+    def __repr__(self):
+        """String representation showing configuration."""
+        return (f"GRFSimulator(N={self.N}, dim={self.dim}, "
+                f"boxlength={self.boxlength}, device='{self.device}')")
 
     def generate(
         self,

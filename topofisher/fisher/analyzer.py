@@ -25,6 +25,10 @@ class FisherAnalyzer(nn.Module):
         super().__init__()
         self.clean_data = clean_data
 
+    def __repr__(self):
+        """String representation showing configuration."""
+        return f"FisherAnalyzer(clean_data={self.clean_data})"
+
     def forward(
         self,
         summaries: List[torch.Tensor],

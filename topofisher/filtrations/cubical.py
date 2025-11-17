@@ -36,6 +36,13 @@ class CubicalLayer(nn.Module):
         assert len(self.min_persistence) == len(self.dimensions), \
             "min_persistence must have same length as homology_dimensions"
 
+    def __repr__(self):
+        """String representation showing configuration."""
+        if all(p == 0.0 for p in self.min_persistence):
+            return f"CubicalLayer(homology_dimensions={self.dimensions})"
+        else:
+            return f"CubicalLayer(homology_dimensions={self.dimensions}, min_persistence={self.min_persistence})"
+
     def forward(self, X: torch.Tensor) -> List[List[torch.Tensor]]:
         """
         Compute persistence diagrams from cubical complex.

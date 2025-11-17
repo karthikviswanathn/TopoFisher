@@ -57,6 +57,11 @@ class MOPEDCompression(Compression):
         self.reg = reg
         self.seed = seed
 
+    def __repr__(self):
+        """String representation showing configuration."""
+        return (f"MOPEDCompression(train_frac={self.train_frac}, "
+                f"clean_data={self.clean_data}, reg={self.reg})")
+
     def split_data(self, summaries: List[torch.Tensor]) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         """
         Split summaries into train/test sets using a local RNG.

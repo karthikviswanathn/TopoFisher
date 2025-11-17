@@ -1,0 +1,362 @@
+"""
+Component factory with registry pattern for creating pipeline components.
+
+This module provides a clean factory pattern for creating simulators,
+filtrations, vectorizations, and compressions from configuration.
+"""
+from typing import Dict, Any, Callable, Optional
+import torch
+
+from .data_types import (
+    SimulatorConfig, FiltrationConfig, VectorizationConfig,
+    CompressionConfig, AnalysisConfig
+)
+
+
+# Component registries
+SIMULATORS: Dict[str, Callable] = {}
+FILTRATIONS: Dict[str, Callable] = {}
+VECTORIZATIONS: Dict[str, Callable] = {}
+COMPRESSIONS: Dict[str, Callable] = {}
+
+
+def register_simulator(name: str):
+    """Decorator to register a simulator factory."""
+    def decorator(func: Callable):
+        SIMULATORS[name] = func
+        return func
+    return decorator
+
+
+def register_filtration(name: str):
+    """Decorator to register a filtration factory."""
+    def decorator(func: Callable):
+        FILTRATIONS[name] = func
+        return func
+    return decorator
+
+
+def register_vectorization(name: str):
+    """Decorator to register a vectorization factory."""
+    def decorator(func: Callable):
+        VECTORIZATIONS[name] = func
+        return func
+    return decorator
+
+
+def register_compression(name: str):
+    """Decorator to register a compression factory."""
+    def decorator(func: Callable):
+        COMPRESSIONS[name] = func
+        return func
+    return decorator
+
+
+# ============================================================================
+# Simulator Factories
+# ============================================================================
+
+@register_simulator('grf')
+def create_grf_simulator(params: Dict[str, Any]):
+    """Create Gaussian Random Field simulator."""
+    from ..simulators import GRFSimulator
+
+    # Auto-detect device if not specified
+    if 'device' not in params:
+        params['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Auto-detected device: {params['device']}")
+
+    return GRFSimulator(**params)
+
+
+@register_simulator('gaussian_vector')
+def create_gaussian_vector_simulator(params: Dict[str, Any]):
+    """Create Gaussian Vector simulator."""
+    from ..simulators import GaussianVectorSimulator
+
+    # Auto-detect device if not specified
+    if 'device' not in params:
+        params['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Auto-detected device: {params['device']}")
+
+    return GaussianVectorSimulator(**params)
+
+
+# ============================================================================
+# Filtration Factories
+# ============================================================================
+
+@register_filtration('cubical')
+def create_cubical_filtration(params: Dict[str, Any], trainable: bool = False):
+    """Create Cubical filtration."""
+    from ..filtrations import CubicalLayer
+    if trainable:
+        raise ValueError("Cubical filtration does not support training. Set trainable=false.")
+    return CubicalLayer(**params)
+
+
+@register_filtration('alpha')
+def create_alpha_filtration(params: Dict[str, Any], trainable: bool = False):
+    """Create Alpha filtration."""
+    from ..filtrations import AlphaComplexLayer
+    if trainable:
+        raise ValueError("Alpha filtration does not support training. Set trainable=false.")
+    return AlphaComplexLayer(**params)
+
+
+@register_filtration('identity')
+def create_identity_filtration(params: Dict[str, Any], trainable: bool = False):
+    """Create Identity filtration (pass-through)."""
+    from ..filtrations import IdentityFiltration
+    if trainable:
+        raise ValueError("Identity filtration does not support training. Set trainable=false.")
+    return IdentityFiltration(**params)
+
+
+@register_filtration('learnable')
+def create_learnable_filtration(params: Dict[str, Any], trainable: bool = False):
+    """Create Learnable filtration."""
+    from ..filtrations import LearnableFiltration
+    if not trainable:
+        print("Warning: 'learnable' filtration type but trainable=false. Setting trainable=true.")
+    return LearnableFiltration(**params)
+
+
+# ============================================================================
+# Vectorization Factories
+# ============================================================================
+
+@register_vectorization('topk')
+def create_topk_vectorization(params: Dict[str, Any], trainable: bool = False):
+    """Create TopK vectorization."""
+    from ..vectorizations import TopKLayer
+    if trainable:
+        raise ValueError("TopK vectorization does not support training. Set trainable=false.")
+    return TopKLayer(**params)
+
+
+@register_vectorization('persistence_image')
+def create_persistence_image_vectorization(params: Dict[str, Any], trainable: bool = False):
+    """Create Persistence Image vectorization."""
+    from ..vectorizations import PersistenceImageLayer
+    if trainable:
+        # Use learnable version
+        from ..vectorizations import LearnablePersistenceImageLayer
+        return LearnablePersistenceImageLayer(**params)
+    return PersistenceImageLayer(**params)
+
+
+@register_vectorization('combined')
+def create_combined_vectorization(params: Dict[str, Any], trainable: bool = False):
+    """Create Combined vectorization."""
+    from ..vectorizations import CombinedVectorization
+
+    if trainable:
+        raise ValueError("Combined vectorization itself doesn't support training. "
+                       "Set trainable=true on individual sub-vectorizations.")
+
+    # Extract sub-vectorization configs
+    if 'configs' not in params:
+        raise ValueError("Combined vectorization requires 'configs' parameter")
+
+    sub_configs = params['configs']
+    if not isinstance(sub_configs, list) or len(sub_configs) == 0:
+        raise ValueError("Combined vectorization 'configs' must be a non-empty list")
+
+    # Create sub-vectorizations
+    vectorizations = []
+    for config in sub_configs:
+        vec_type = config['type']
+        vec_params = config.get('params', {})
+        vec_trainable = config.get('trainable', False)
+
+        if vec_type not in VECTORIZATIONS:
+            raise ValueError(f"Unknown vectorization type: {vec_type}")
+
+        vec = VECTORIZATIONS[vec_type](vec_params, vec_trainable)
+        vectorizations.append(vec)
+
+    return CombinedVectorization(vectorizations)
+
+
+@register_vectorization('identity')
+def create_identity_vectorization(params: Dict[str, Any], trainable: bool = False):
+    """Create Identity vectorization (pass-through)."""
+    from ..vectorizations import IdentityVectorization
+    if trainable:
+        raise ValueError("Identity vectorization does not support training. Set trainable=false.")
+    return IdentityVectorization(**params)
+
+
+# ============================================================================
+# Compression Factories
+# ============================================================================
+
+@register_compression('identity')
+def create_identity_compression(params: Dict[str, Any], trainable: bool = False):
+    """Create Identity compression (pass-through)."""
+    from ..compressions import IdentityCompression
+    if trainable:
+        raise ValueError("Identity compression does not support training. Set trainable=false.")
+    return IdentityCompression(**params)
+
+
+@register_compression('moped')
+def create_moped_compression(params: Dict[str, Any], trainable: bool = False):
+    """Create MOPED compression."""
+    from ..compressions import MOPEDCompression
+    if trainable:
+        raise ValueError("MOPED compression does not require training. Set trainable=false.")
+
+    # Ensure reg is a float if provided
+    if 'reg' in params:
+        params['reg'] = float(params['reg'])
+
+    return MOPEDCompression(**params)
+
+
+@register_compression('mlp')
+def create_mlp_compression(params: Dict[str, Any], trainable: bool = False):
+    """Create MLP compression."""
+    from ..compressions import MLPCompression
+    if not trainable:
+        print("Warning: MLP compression typically requires training. Consider setting trainable=true.")
+    return MLPCompression(**params)
+
+
+@register_compression('cnn')
+def create_cnn_compression(params: Dict[str, Any], trainable: bool = False):
+    """Create CNN compression."""
+    from ..compressions import CNNCompression
+    if not trainable:
+        print("Warning: CNN compression typically requires training. Consider setting trainable=true.")
+    return CNNCompression(**params)
+
+
+@register_compression('inception')
+def create_inception_compression(params: Dict[str, Any], trainable: bool = False):
+    """Create Inception block compression."""
+    from ..compressions import InceptionCompression
+    if not trainable:
+        print("Warning: Inception compression typically requires training. Consider setting trainable=true.")
+    return InceptionCompression(**params)
+
+
+# ============================================================================
+# Main Factory Functions
+# ============================================================================
+
+def create_simulator(config: SimulatorConfig):
+    """
+    Create a simulator from configuration.
+
+    Args:
+        config: Simulator configuration
+
+    Returns:
+        Simulator instance
+
+    Raises:
+        ValueError: If simulator type is unknown
+    """
+    if config.type not in SIMULATORS:
+        available = ', '.join(SIMULATORS.keys())
+        raise ValueError(f"Unknown simulator type: {config.type}. Available: {available}")
+
+    return SIMULATORS[config.type](config.params)
+
+
+def create_filtration(config: FiltrationConfig):
+    """
+    Create a filtration from configuration.
+
+    Args:
+        config: Filtration configuration
+
+    Returns:
+        Filtration instance
+
+    Raises:
+        ValueError: If filtration type is unknown
+    """
+    if config.type not in FILTRATIONS:
+        available = ', '.join(FILTRATIONS.keys())
+        raise ValueError(f"Unknown filtration type: {config.type}. Available: {available}")
+
+    return FILTRATIONS[config.type](config.params, config.trainable)
+
+
+def create_vectorization(config: VectorizationConfig):
+    """
+    Create a vectorization from configuration.
+
+    Args:
+        config: Vectorization configuration
+
+    Returns:
+        Vectorization instance
+
+    Raises:
+        ValueError: If vectorization type is unknown
+    """
+    if config.type not in VECTORIZATIONS:
+        available = ', '.join(VECTORIZATIONS.keys())
+        raise ValueError(f"Unknown vectorization type: {config.type}. Available: {available}")
+
+    return VECTORIZATIONS[config.type](config.params, config.trainable)
+
+
+def create_compression(config: CompressionConfig):
+    """
+    Create a compression from configuration.
+
+    Args:
+        config: Compression configuration
+
+    Returns:
+        Compression instance
+
+    Raises:
+        ValueError: If compression type is unknown
+    """
+    if config.type not in COMPRESSIONS:
+        available = ', '.join(COMPRESSIONS.keys())
+        raise ValueError(f"Unknown compression type: {config.type}. Available: {available}")
+
+    return COMPRESSIONS[config.type](config.params, config.trainable)
+
+
+def create_fisher_analyzer(clean_data: bool = True):
+    """
+    Create a Fisher analyzer.
+
+    Args:
+        clean_data: Whether to clean data before analysis
+
+    Returns:
+        FisherAnalyzer instance
+    """
+    from ..fisher import FisherAnalyzer
+    return FisherAnalyzer(clean_data=clean_data)
+
+
+def create_pipeline_config(analysis_config: AnalysisConfig):
+    """
+    Convert AnalysisConfig to PipelineConfig for pipeline execution.
+
+    Args:
+        analysis_config: Analysis configuration from YAML
+
+    Returns:
+        PipelineConfig instance
+    """
+    from ..pipelines import PipelineConfig
+
+    return PipelineConfig(
+        theta_fid=torch.tensor(analysis_config.theta_fid),
+        delta_theta=torch.tensor(analysis_config.delta_theta),
+        n_s=analysis_config.n_s,
+        n_d=analysis_config.n_d,
+        seed_cov=analysis_config.seed_cov,
+        seed_ders=analysis_config.seed_ders
+    )
