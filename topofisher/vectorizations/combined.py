@@ -25,6 +25,11 @@ class CombinedVectorization(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList(vectorization_layers)
 
+    def __repr__(self):
+        """String representation showing configuration (JSON-friendly single line)."""
+        layer_reprs = [repr(layer) for layer in self.layers]
+        return f"CombinedVectorization(layers=[{', '.join(layer_reprs)}])"
+
     def fit(self, all_diagrams_list: List[List[List[torch.Tensor]]]):
         """
         Fit all vectorization layers on ALL diagrams (fiducial + all derivatives).

@@ -2,9 +2,7 @@
 
 **Topological Fisher Information Analysis in PyTorch**
 
-TopoFisher is a clean, modular PyTorch implementation for computing Fisher information matrices using persistent homology. It enables parameter inference from data by combining topological data analysis with Fisher information theory.
-
-**Interactive Dashboard**: See [GRF compression results](https://raw.githack.com/karthikviswanathn/TopoFisher/dev/topofisher/examples/grf/dashboard.html)
+TopoFisher is a modular PyTorch implementation for computing Fisher information matrices using persistent homology. It enables parameter inference from data by combining topological data analysis with Fisher information theory.
 
 ## Overview
 
@@ -13,173 +11,249 @@ The pipeline consists of five customizable components:
 1. **Simulator**: Generate data at different parameter values (e.g., Gaussian Random Fields)
 2. **Filtration**: Compute persistence diagrams from data (e.g., Cubical Complex)
 3. **Vectorization**: Convert persistence diagrams to feature vectors (e.g., Top-K)
-4. **Compression**: Compress features to maximize Fisher information (e.g., MOPED, MLP, CNN)
+4. **Compression**: Reduce dimensionality while preserving Fisher information (e.g., MOPED, MLP)
 5. **Fisher Analyzer**: Compute Fisher information matrix from summary statistics
 
-## Installation
-
-```bash
-# Install dependencies
-pip install torch numpy scipy gudhi multipers powerbox
-
-# Install TopoFisher
-cd TopoFisher
-pip install -e .
-```
 
 ## Quick Start
 
+### Method 1: YAML Configuration (Recommended)
+
+```bash
+# Run with YAML config
+python run_pipeline.py topofisher/examples/grf/topk_moped.yaml --save-results
+
+# Train learnable components
+python run_pipeline.py topofisher/examples/grf/learnable_mlp.yaml --train --save-results
+```
+
+### Method 2: Python API
+
 ```python
 import torch
-from topofisher import (
-    GRFSimulator,
-    CubicalLayer,
-    TopKLayer,
-    CombinedVectorization,
-    IdentityCompression,
-    MOPEDCompression,
-    FisherAnalyzer,
-    FisherPipeline,
-    FisherConfig
-)
+from topofisher.simulators.grf import GRFSimulator
+from topofisher.filtrations.cubical import CubicalLayer
+from topofisher.vectorizations.topk import TopKLayer
+from topofisher.vectorizations.combined import CombinedVectorization
+from topofisher.compressions.moped import MOPEDCompression
+from topofisher.fisher.analyzer import FisherAnalyzer
+from topofisher.pipelines.base import BasePipeline
+from topofisher.config.data_types import AnalysisConfig
 
 # 1. Set up components
-simulator = GRFSimulator(N=32, dim=2, boxlength=1.0)
+simulator = GRFSimulator(N=32, dim=2)
 
-filtration = CubicalLayer(
-    homology_dimensions=[0, 1],
-    min_persistence=[0.0, 0.0]
-)
+filtration = CubicalLayer(homology_dimensions=[0, 1])
 
+# Auto-k selection (NEW!)
 vectorization = CombinedVectorization([
-    TopKLayer(k=10),  # H0
-    TopKLayer(k=10),  # H1
+    TopKLayer(),  # k automatically determined from data
+    TopKLayer(),  # k automatically determined from data
 ])
 
-# Choose compression method
-compression = IdentityCompression()  # No compression
-# compression = MOPEDCompression(compress_frac=0.5)  # Or use MOPED
+compression = MOPEDCompression(reg=1e-8)
 
-fisher = FisherAnalyzer(clean_data=True)
+fisher_analyzer = FisherAnalyzer(clean_data=True)
 
 # 2. Create pipeline
-pipeline = FisherPipeline(
+pipeline = BasePipeline(
     simulator=simulator,
     filtration=filtration,
     vectorization=vectorization,
     compression=compression,
-    fisher_analyzer=fisher
+    fisher_analyzer=fisher_analyzer
 )
 
 # 3. Configure analysis
-config = FisherConfig(
-    theta_fid=torch.tensor([1.0, 2.0]),      # Fiducial parameters [A, B]
-    delta_theta=torch.tensor([0.1, 0.2]),    # Step sizes for derivatives
-    n_s=100,                                  # Simulations for covariance
-    n_d=100,                                  # Simulations for derivatives
-    find_derivative=[True, True]              # Compute derivatives for both params
+config = AnalysisConfig(
+    theta_fid=[1.0, 2.0],      # Fiducial parameters [A, B]
+    delta_theta=[0.1, 0.2],    # Step sizes (divided by 2 internally)
+    n_s=1000,                  # Samples for covariance
+    n_d=1000,                  # Samples for derivatives
+    seed_cov=42,
+    seed_ders=[43, 44]
 )
 
 # 4. Run pipeline
 result = pipeline(config)
 
 # 5. Inspect results
-print("Fisher Matrix:")
-print(result.fisher_matrix)
-
-print("\nParameter Constraints (1-sigma):")
-print(result.constraints)
-
-print("\nLog Fisher Information:")
-print(result.log_det_fisher)
+print(f"Fisher Matrix:\n{result.fisher_matrix}")
+print(f"Constraints (1σ): {result.constraints}")
+print(f"log|F|: {result.log_det_fisher}")
 ```
 
-## Architecture
+## Key Features
+
+### 🚀 Training Learned Compressions
+
+```python
+from topofisher.compressions.mlp import MLPCompression
+from topofisher.config.data_types import TrainingConfig
+
+# Create uninitialized compression (dimensions inferred from data)
+compression = MLPCompression(hidden_dims=[64, 32])
+
+# Train with pipeline
+training_config = TrainingConfig(
+    n_epochs=1000,
+    lr=1e-3,
+    batch_size=500,
+    check_gaussianity=True  # Ensure compressed features are Gaussian
+)
+
+# Pipeline automatically trains before running
+result = pipeline.run(config=analysis_config, training_config=training_config)
+```
+
+## Structure
 
 ```
 topofisher/
-├── core/
-│   ├── data_types.py     # Data structures (FisherConfig, FisherResult)
-│   ├── interfaces.py     # Abstract base classes
-│   └── pipeline.py       # Pipeline orchestrator
+├── config/              # Configuration system
+│   ├── data_types.py    # Config dataclasses
+│   ├── loader.py        # YAML loading
+│   └── component_factory.py  # Component creation
+├── pipelines/           # Pipeline orchestrators
+│   ├── base.py          # Standard pipeline
+│   └── learnable.py     # Pipelines with training
 ├── simulators/
-│   ├── grf.py           # Gaussian Random Field simulator
-│   └── gaussian_vector.py  # Gaussian vector simulator (for testing)
+│   ├── __init__.py      # Base Simulator class
+│   ├── grf.py           # Gaussian Random Field
+│   └── gaussian_vector.py
 ├── filtrations/
-│   ├── cubical.py       # Cubical complex filtration
-│   └── mma.py           # MMA filtration
+│   ├── cubical.py       # Cubical complex (GUDHI)
+│   ├── mma.py           # Multi-parameter persistence
+│   └── identity.py      # Pass-through
 ├── vectorizations/
-│   ├── topk.py          # Top-K vectorization
-│   ├── persistence_image.py  # Persistence images
-│   └── combined.py      # Combined vectorizations
+│   ├── topk.py          # Top-K with auto-selection
+│   ├── persistence_image.py
+│   ├── combined.py      # Combine multiple vectorizations
+│   └── mma_topk.py
 ├── compressions/
-│   ├── moped.py         # MOPED compression
-│   ├── mlp.py           # MLP learned compression
-│   ├── cnn.py           # CNN learned compression
-│   └── inception.py     # Inception block compression
-└── fisher/
-    └── analyzer.py      # Fisher information computation
+│   ├── __init__.py      # Base Compression class
+│   ├── identity.py      # No compression
+│   ├── moped.py         # MOPED (analytical)
+│   ├── mlp.py           # Multi-layer perceptron
+│   ├── cnn.py           # Convolutional network
+│   └── inception.py     # Inception blocks
+├── fisher/
+│   └── analyzer.py      # Fisher matrix computation
+└── examples/
+    └── grf/
+        ├── topk_moped.yaml     # Standard config
+        ├── learnable_mlp.yaml  # Trainable MLP
+        └── train_*.py          # Training scripts
+```
+
+## YAML Configuration
+
+Create minimal, readable configs:
+
+```yaml
+experiment:
+  name: my_experiment
+  output_dir: experiments/my_experiment
+
+analysis:
+  theta_fid: [1.0, 2.0]
+  delta_theta: [0.1, 0.2]
+  n_s: 1000
+  n_d: 1000
+  seed_cov: 42
+  seed_ders: [43, 44]
+
+simulator:
+  type: grf
+  params:
+    N: 32
+    dim: 2
+
+filtration:
+  type: cubical
+  params:
+    homology_dimensions: [0, 1]
+
+vectorization:
+  type: combined
+  params:
+    layers:
+      - type: topk
+        params: {}  # Auto-k selection
+      - type: topk
+        params:
+          k: 10     # Manual k
+
+compression:
+  type: moped
+  params:
+    reg: 1.0e-8
+
+# Optional: for trainable components
+training:
+  n_epochs: 1000
+  lr: 0.001
+  batch_size: 500
 ```
 
 ## Compression Methods
 
-TopoFisher supports multiple compression methods to reduce dimensionality while maximizing Fisher information:
-
-### IdentityCompression (No Compression)
+### Identity (No Compression)
 ```python
-from topofisher import IdentityCompression
-compression = IdentityCompression()  # Pass-through, no compression
+from topofisher.compressions.identity import IdentityCompression
+compression = IdentityCompression()
 ```
 
-### MOPED (Maximum a Posteriori with Exponential Distribution)
+### MOPED (Analytical)
 ```python
-from topofisher import MOPEDCompression
+from topofisher.compressions.moped import MOPEDCompression
 compression = MOPEDCompression(
-    compress_frac=0.5,  # Use 50% of data to compute compression matrix
-    clean_data=True     # Remove zero-variance features
+    train_frac=0.5,   # Train/test split ratio
+    clean_data=True,  # Remove zero-variance features
+    reg=1e-8         # Regularization
 )
 ```
 
-### MLP (Multi-Layer Perceptron)
+### MLP (Learned)
 ```python
-from topofisher import MLPCompression
+from topofisher.compressions.mlp import MLPCompression
 
-# Create and train MLP (see examples/grf/train_mlp.py for training)
+# Dimensions can be inferred from data
 compression = MLPCompression(
-    input_dim=260,      # Input feature dimension
-    output_dim=2,       # Number of parameters
-    hidden_dims=[512],  # Hidden layer dimensions
-    dropout=0.2
+    hidden_dims=[64, 32],  # Hidden layers
+    activation='gelu',
+    dropout=0.1
 )
-# Or load pre-trained
-compression = MLPCompression.from_pretrained("model.pth")
+
+# Train using pipeline.run(config, training_config)
 ```
 
-### CNN (Convolutional Neural Network for Persistence Images)
+### CNN (for Persistence Images)
 ```python
-from topofisher import CNNCompression
+from topofisher.compressions.cnn import CNNCompression
 
-# For persistence images
 compression = CNNCompression(
-    n_channels=2,        # Number of homology dimensions
-    n_pixels=16,         # Resolution (16x16)
-    output_dim=2,        # Number of parameters
-    dropout=0.2,
-    use_dense_path=False  # Use only CNN path (or True for CNN+Dense)
+    channels=[32, 64, 128],  # CNN channels
+    kernel_size=3,
+    pool_size=2
 )
 ```
 
-### InceptBlock (IMNN-style Inception Network)
-```python
-from topofisher import InceptBlockCompression
+## Important Implementation Details
 
-# IMNN-style inception blocks
-compression = InceptBlockCompression(
-    n_channels=2,
-    n_pixels=16,
-    output_dim=2,
-    n_filters=16
-)
+### Critical Rules 
+
+1. **Finite Differences**: Always use ±Δθ/2, never ±Δθ
+2. **Seed Management**: Same seeds for θ- and θ+ pairs
+3. **Data Flow**: Maintain order [fid, minus_0, plus_0, minus_1, plus_1, ...]
+
+
+## Examples
+
+```bash
+# Basic GRF with TopK and MOPED
+python run_pipeline.py topofisher/examples/grf/topk_moped.yaml
+
 ```
 
 ## Extending TopoFisher
@@ -187,74 +261,33 @@ compression = InceptBlockCompression(
 ### Add a New Simulator
 
 ```python
-from topofisher.core.interfaces import Simulator
+from topofisher.simulators import Simulator
 
 class MySimulator(Simulator):
-    def generate(self, theta, n_samples, seed=None):
-        # Your simulation logic
-        return data  # shape: (n_samples, ...)
-```
-
-### Add a New Vectorization
-
-```python
-import torch.nn as nn
-
-class MyVectorization(nn.Module):
-    def forward(self, diagrams):
-        # diagrams: List of (n_points, 2) tensors
-        features = []
-        for dgm in diagrams:
-            # Your vectorization logic
-            features.append(my_features)
-        return torch.stack(features)
+    def generate_single(self, theta, seed):
+        # Generate one sample at theta with given seed
+        np.random.seed(seed)
+        return data  # numpy array
 ```
 
 ### Add a New Compression
 
 ```python
-from topofisher.core.interfaces import Compression
+from topofisher.compressions import Compression
 
 class MyCompression(Compression):
-    def forward(self, summaries, delta_theta=None):
-        # Compress summaries
-        # summaries: List of tensors [fiducial, theta_minus_0, theta_plus_0, ...]
-        compressed = [self.compress(s) for s in summaries]
-        return compressed
+    def forward(self, summaries):
+        # summaries: [fid, minus_0, plus_0, minus_1, plus_1, ...]
+        return [self.compress_fn(s) for s in summaries]
 ```
 
-## TODO
-
-- [ ] Add support for selective derivative computation (find_derivative flag)
-- [ ] Add Fisher bias error computation
-- [x] Add compression stage to pipeline (MOPED, MLP, CNN, InceptBlock)
-- [x] Add Persistence Images vectorization
-- [ ] Add more vectorization methods (Landscapes, Silhouettes, etc.)
-- [ ] Add distributed computing support
-- [ ] Add GPU acceleration for filtration
-- [ ] Add more simulators (LSS, N-body, etc.)
 
 ## Requirements
 
 - Python >= 3.8
-- PyTorch >= 1.10
+- PyTorch >= 2.0
 - NumPy
 - GUDHI
-- powerbox (for GRF simulation)
+- powerbox (patched version in external/)
+- multipers (for MMA filtration)
 
-## License
-
-MIT
-
-## Citation
-
-If you use TopoFisher in your research, please cite:
-
-```bibtex
-@software{topofisher2024,
-  title={TopoFisher: Topological Fisher Information Analysis},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/TopoFisher}
-}
-```

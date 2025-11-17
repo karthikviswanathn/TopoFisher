@@ -1,10 +1,10 @@
-# GRF with Cubical Complex and MOPED Compression
+# GRF with TopK Vectorization and MOPED Compression
 # Non-trainable pipeline for baseline Fisher information analysis
 
 experiment:
-  name: grf_cubical_moped
-  output_dir: experiments/grf/cubical_moped  # Results saved here
-  description: "Baseline GRF analysis with cubical persistence and MOPED compression"
+  name: grf_topk_moped
+  output_dir: experiments/grf/topk_moped  # Results saved here
+  description: "Baseline GRF analysis with TopK vectorization and MOPED compression"
 
 # Analysis parameters (Fisher information analysis settings)
 analysis:

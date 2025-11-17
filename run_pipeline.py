@@ -7,7 +7,7 @@ Usage:
 
 Examples:
     # Run inference only
-    python run_pipeline.py topofisher/examples/grf/cubical_moped.yaml
+    python run_pipeline.py topofisher/examples/grf/topk_moped.yaml
 
     # Train learnable components
     python run_pipeline.py topofisher/examples/grf/cubical_mlp.yaml --train
