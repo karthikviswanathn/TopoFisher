@@ -16,32 +16,21 @@ class LearnableVectorizationPipeline(LearnablePipeline):
     PyTorch automatically tracks and trains any learnable parameters.
     """
 
-    def forward_pass(
-        self,
-        data: List,
-        delta_theta: torch.Tensor
-    ) -> torch.Tensor:
+    def _compute_summaries(self, data: List) -> List[torch.Tensor]:
         """
-        Forward pass for vectorization training.
+        Compute compressed summaries from persistence diagrams.
+
+        Pipeline: diagrams → vectorization → compression
 
         Args:
             data: Persistence diagrams [fid, minus_0, plus_0, ...]
-            delta_theta: Parameter step sizes (for finite differences in FisherAnalyzer)
 
         Returns:
-            Loss (negative log Fisher determinant)
+            List of compressed summary tensors [fid, minus_0, plus_0, ...]
         """
-        # Vectorize diagrams
         summaries = self.vectorization(data)
-
-        # Apply compression (no delta_theta needed - Fisher matrix invariant to scaling)
         compressed = self.compression(summaries)
-
-        # Compute Fisher using finite differences
-        fisher_result = self.fisher_analyzer.compute_fisher(compressed, delta_theta)
-
-        # Return loss
-        return -fisher_result.log_det_fisher
+        return compressed
 
     def generate_diagrams(self, config):
         """

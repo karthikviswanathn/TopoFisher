@@ -1,0 +1,11 @@
+# TopK with automatic k selection
+type: combined
+trainable: false
+params:
+  layers:
+    - type: topk
+      params:
+        k: 20
+    - type: topk
+      params:
+        k: 20

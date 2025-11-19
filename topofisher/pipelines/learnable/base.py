@@ -1,4 +1,11 @@
-"""Base class for learnable pipelines."""
+"""Base class for learnable pipelines.
+
+TODO: Wrap filtration, vectorization and compression into a single model.
+Currently these components are separate, but they could be wrapped together
+into a single nn.Module (as a PyTorch model) for cleaner learnable pipeline implementations.
+This would enable end-to-end optimization and better gradient flow through
+all components.
+"""
 
 import torch
 import torch.nn as nn
@@ -6,7 +13,7 @@ from abc import abstractmethod
 from typing import List, Tuple, Dict, Any
 from ..base import BasePipeline
 from ..configs.data_types import PipelineConfig, TrainingConfig, FisherResult
-
+from ...fisher.gaussianity import test_gaussianity
 
 class LearnablePipeline(BasePipeline):
     """
@@ -85,27 +92,59 @@ class LearnablePipeline(BasePipeline):
         return train_data, val_data, test_data
 
     @abstractmethod
-    def forward_pass(
-        self,
-        data: List[torch.Tensor],
-        delta_theta: torch.Tensor
-    ) -> torch.Tensor:
+    def _compute_summaries(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
         """
-        Define the forward pass for this pipeline.
+        Compute compressed summaries from input data.
 
-        This is the only method subclasses need to implement for training.
-        It should return the negative log Fisher determinant (loss).
+        Each pipeline type implements this differently:
+        - Filtration: data → filtration → vectorization → compression
+        - Compression: summaries → compression
+        - Vectorization: diagrams → vectorization → compression
 
         Args:
-            data: Batch of data in appropriate format for this pipeline
-            delta_theta: Parameter step sizes
+            data: Input data in pipeline-specific format
 
         Returns:
-            Loss value (negative log Fisher determinant)
+            List of compressed summary tensors [fid, minus_0, plus_0, ...]
         """
         pass
 
-    def train(
+    def compute_fisher_result(
+        self,
+        data: List[torch.Tensor],
+        delta_theta: torch.Tensor,
+        check_gaussianity: bool = False
+    ):
+        """
+        Compute Fisher result with optional Gaussianity check.
+
+        This method eliminates redundancy by centralizing the Fisher computation
+        and Gaussianity checking logic. Subclasses only need to implement
+        _compute_summaries().
+
+        Args:
+            data: Input data
+            delta_theta: Parameter step sizes
+            check_gaussianity: If True, also check Gaussianity (no extra computation)
+
+        Returns:
+            FisherResult with fisher_matrix, constraints, log_det_fisher
+            If check_gaussianity=True, also includes 'passes_gaussianity' attribute
+        """
+        # Get compressed summaries (subclass-specific implementation)
+        compressed = self._compute_summaries(data)
+
+        # Compute Fisher result
+        fisher_result = self.fisher_analyzer(compressed, delta_theta)
+
+        # Gaussianity check and updating fisher_result
+        if check_gaussianity:
+            _, passes_gaussianity = test_gaussianity(compressed, verbose=False)
+            fisher_result.passes_gaussianity = passes_gaussianity
+
+        return fisher_result
+
+    def train_model(
         self,
         train_data: List[torch.Tensor],
         val_data: List[torch.Tensor],
@@ -138,8 +177,12 @@ class LearnablePipeline(BasePipeline):
             )
 
         if training_config.verbose:
-            n_params = sum(p.numel() for p in params)
-            print(f"  Training {n_params} parameters")
+            # Skip parameter counting if there are uninitialized parameters (e.g., LazyLinear)
+            try:
+                n_params = sum(p.numel() for p in params)
+                print(f"  Training {n_params} parameters")
+            except (ValueError, RuntimeError):
+                print(f"  Training parameters (lazy initialization - will be determined on first forward pass)")
 
         # Setup optimizer with ALL parameters automatically
         optimizer = torch.optim.Adam(
@@ -170,8 +213,9 @@ class LearnablePipeline(BasePipeline):
             idx = torch.randperm(min_train_size)[:batch_size]
             batch_data = self._extract_batch(train_data, idx)
 
-            # Forward pass (subclass-specific)
-            loss = self.forward_pass(batch_data, delta_theta)
+            # Forward pass: compute Fisher result and extract loss
+            fisher_result = self.compute_fisher_result(batch_data, delta_theta, check_gaussianity=False)
+            loss = -fisher_result.log_det_fisher
 
             # Backward pass
             optimizer.zero_grad()
@@ -184,12 +228,17 @@ class LearnablePipeline(BasePipeline):
             if (epoch + 1) % training_config.validate_every == 0:
                 self.eval()  # Set entire pipeline to eval mode
                 with torch.no_grad():
-                    val_loss = self.forward_pass(val_data, delta_theta)
+                    val_result = self.compute_fisher_result(val_data, delta_theta, check_gaussianity=training_config.check_gaussianity)
+                    val_loss = -val_result.log_det_fisher
 
                 val_losses.append(val_loss.item())
 
-                # Save best model (entire pipeline state)
-                if val_loss < best_val_loss:
+                # Check validation conditions
+                is_best_loss = val_loss.item() < best_val_loss
+                passes_gaussianity = val_result.passes_gaussianity  
+
+                # Save best model (both conditions must pass)
+                if is_best_loss and passes_gaussianity:
                     best_val_loss = val_loss.item()
                     best_epoch = epoch + 1
                     best_model_state = {
@@ -199,11 +248,15 @@ class LearnablePipeline(BasePipeline):
                     if training_config.verbose:
                         print(f"  Epoch {epoch+1}/{training_config.n_epochs}: "
                               f"Train Loss={loss.item():.3f}, "
-                              f"Val Loss={val_loss.item():.3f} ✓")
+                              f"Val Loss={val_loss.item():.3f}, "
+                              f"Best Loss: ✓, Gaussianity: ✓ → Model updated")
                 elif training_config.verbose:
+                    best_loss_mark = "✓" if is_best_loss else "✗"
+                    gaussian_mark = "✓" if passes_gaussianity else "✗"
                     print(f"  Epoch {epoch+1}/{training_config.n_epochs}: "
                           f"Train Loss={loss.item():.3f}, "
-                          f"Val Loss={val_loss.item():.3f}")
+                          f"Val Loss={val_loss.item():.3f}, "
+                          f"Best Loss: {best_loss_mark}, Gaussianity: {gaussian_mark}")
 
         # Load best model (entire pipeline)
         if best_model_state is not None:
@@ -251,21 +304,17 @@ class LearnablePipeline(BasePipeline):
         """
         Evaluate the pipeline on a dataset.
 
+        Always checks Gaussianity on test data for final verification.
+
         Args:
             data: Data to evaluate [fid, minus_0, plus_0, ...]
             delta_theta: Parameter step sizes
 
         Returns:
-            Fisher result with matrix, constraints, log determinant
+            Fisher result with matrix, constraints, log determinant, and passes_gaussianity
         """
-        # Apply compression (or other transformation)
-        # No delta_theta needed - Fisher matrix invariant to scaling
-        compressed = self.compression(data)
-
-        # Compute Fisher using finite differences
-        result = self.fisher_analyzer.compute_fisher(compressed, delta_theta)
-
-        return result
+        # Always check Gaussianity on test data
+        return self.compute_fisher_result(data, delta_theta, check_gaussianity=True)
 
     def run(
         self,
@@ -314,7 +363,7 @@ class LearnablePipeline(BasePipeline):
             print("Training Component")
             print("="*80)
 
-        history = self.train(
+        history = self.train_model(
             train_data=train_data,
             val_data=val_data,
             delta_theta=config.delta_theta,
@@ -331,7 +380,7 @@ class LearnablePipeline(BasePipeline):
 
         if training_config.verbose:
             print(f"  Test log|F|: {test_result.log_det_fisher:.3f}")
-            print(f"  Test constraints: {test_result.constraints.numpy()}")
+            print(f"  Test constraints: {test_result.constraints.detach().cpu().numpy()}")
 
         return {
             'test_result': test_result,

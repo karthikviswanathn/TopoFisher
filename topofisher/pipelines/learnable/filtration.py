@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from .base import LearnablePipeline
 
-
 class LearnableFiltrationPipeline(LearnablePipeline):
     """
     Pipeline for training filtration from raw data.
@@ -17,26 +16,19 @@ class LearnableFiltrationPipeline(LearnablePipeline):
     and trains all learnable parameters in the pipeline.
     """
 
-    def forward_pass(
-        self,
-        data: List[torch.Tensor],
-        delta_theta: torch.Tensor
-    ) -> torch.Tensor:
+    def _compute_summaries(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
         """
-        Forward pass for filtration training.
+        Compute compressed summaries from raw data.
+
+        Full pipeline: data → filtration → vectorization → compression
 
         Args:
             data: Raw data [fid, minus_0, plus_0, ...]
-            delta_theta: Parameter step sizes (for finite differences in FisherAnalyzer)
 
         Returns:
-            Loss (negative log Fisher determinant)
+            List of compressed summary tensors [fid, minus_0, plus_0, ...]
         """
-        # Full pipeline: raw → filtration → vectorization → compression → Fisher
         diagrams = self.compute_diagrams(data)  # Uses self.filtration
         summaries = self.vectorize(diagrams)
-        compressed = self.compression(summaries)  # No delta_theta needed - Fisher matrix invariant to scaling
-        fisher_result = self.fisher_analyzer.compute_fisher(compressed, delta_theta)  # Finite differences
-
-        # Return loss
-        return -fisher_result.log_det_fisher
+        compressed = self.compression(summaries)
+        return compressed

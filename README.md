@@ -282,6 +282,10 @@ class MyCompression(Compression):
 ```
 
 
+## TODOs
+
+- [ ] **Wrap filtration, vectorization and compression into a single model**: Currently these components are separate, but they could be wrapped together into a single `nn.Module` (perhaps as a PyTorch model) for cleaner learnable pipeline implementations. This would enable end-to-end optimization and better gradient flow through all components.
+
 ## Requirements
 
 - Python >= 3.8

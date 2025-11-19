@@ -1,0 +1,13 @@
+# Example: Modular pipeline using component files
+# Much cleaner than defining everything inline!
+
+experiment:
+  name: modular_grf_pipeline
+  output_dir: experiments/grf/results/modular
+
+# All components can be loaded from files - clean and reusable!
+analysis: analysis/grf_standard.yaml
+simulator: simulators/grf.yaml
+filtration: filtrations/cubical.yaml
+vectorization: vectorizations/topk_auto.yaml
+compression: compressions/moped.yaml

@@ -1,0 +1,5 @@
+# Standard cubical filtration
+type: cubical
+trainable: false
+params:
+  homology_dimensions: [0, 1]

@@ -4,6 +4,7 @@ YAML configuration loading utilities.
 This module provides functions to load pipeline configurations from YAML files
 and create pipeline instances.
 """
+import os
 from pathlib import Path
 from typing import Union, Optional, Dict, Any
 import yaml
@@ -18,6 +19,49 @@ from .component_factory import (
     create_simulator, create_filtration, create_vectorization,
     create_compression, create_fisher_analyzer, create_pipeline_config
 )
+
+
+def load_component_config(config_value: Union[str, Dict], component_name: str,
+                         base_path: Path) -> Dict:
+    """
+    Load component configuration from file or return inline config.
+
+    Args:
+        config_value: Either a string path to YAML file or inline dict config
+        component_name: Name of component (for error messages)
+        base_path: Base path for resolving relative paths
+
+    Returns:
+        Component configuration dictionary
+    """
+    if isinstance(config_value, str):
+        # It's a file path - load the component config
+        component_path = Path(config_value)
+
+        # Try different path resolutions
+        if component_path.is_absolute() and component_path.exists():
+            resolved_path = component_path
+        elif (base_path / component_path).exists():
+            # Relative to main config file
+            resolved_path = base_path / component_path
+        else:
+            # Try in components directory
+            components_dir = Path(__file__).parent / 'components'
+            if (components_dir / component_path).exists():
+                resolved_path = components_dir / component_path
+            else:
+                raise FileNotFoundError(
+                    f"{component_name} config file not found: {config_value}\n"
+                    f"Tried: {component_path}, {base_path / component_path}, "
+                    f"{components_dir / component_path}"
+                )
+
+        print(f"Loading {component_name} from: {resolved_path}")
+        with open(resolved_path, 'r') as f:
+            return yaml.safe_load(f)
+    else:
+        # It's an inline config dictionary
+        return config_value
 
 
 def load_pipeline_config(yaml_path: Union[str, Path]) -> PipelineYAMLConfig:
@@ -43,6 +87,8 @@ def load_pipeline_config(yaml_path: Union[str, Path]) -> PipelineYAMLConfig:
     with open(yaml_path, 'r') as f:
         yaml_data = yaml.safe_load(f)
 
+    base_path = yaml_path.parent
+
     # Parse experiment config
     experiment_data = yaml_data.get('experiment', {})
     experiment_config = ExperimentConfig(
@@ -52,11 +98,12 @@ def load_pipeline_config(yaml_path: Union[str, Path]) -> PipelineYAMLConfig:
         tags=experiment_data.get('tags', [])
     )
 
-    # Parse analysis config (previously 'fisher' or 'simulation')
+    # Parse analysis config (can be file path or inline; previously 'fisher' or 'simulation')
     analysis_data = yaml_data.get('analysis', yaml_data.get('simulation', yaml_data.get('fisher')))
     if not analysis_data:
         raise ValueError("Missing 'analysis' section in YAML config")
 
+    analysis_data = load_component_config(analysis_data, 'analysis', base_path)
     analysis_config = AnalysisConfig(
         theta_fid=analysis_data['theta_fid'],
         delta_theta=analysis_data['delta_theta'],
@@ -66,43 +113,47 @@ def load_pipeline_config(yaml_path: Union[str, Path]) -> PipelineYAMLConfig:
         seed_ders=analysis_data.get('seed_ders', [])
     )
 
-    # Parse simulator config
-    sim_data = yaml_data.get('simulator', {})
+    # Parse simulator config (can be file path or inline)
+    sim_data = yaml_data.get('simulator')
     if not sim_data:
         raise ValueError("Missing 'simulator' section in YAML config")
 
+    sim_data = load_component_config(sim_data, 'simulator', base_path)
     simulator_config = SimulatorConfig(
         type=sim_data['type'],
         params=sim_data.get('params', {})
     )
 
-    # Parse filtration config
-    filt_data = yaml_data.get('filtration', {})
+    # Parse filtration config (can be file path or inline)
+    filt_data = yaml_data.get('filtration')
     if not filt_data:
         raise ValueError("Missing 'filtration' section in YAML config")
 
+    filt_data = load_component_config(filt_data, 'filtration', base_path)
     filtration_config = FiltrationConfig(
         type=filt_data['type'],
         trainable=filt_data.get('trainable', False),
         params=filt_data.get('params', {})
     )
 
-    # Parse vectorization config
-    vec_data = yaml_data.get('vectorization', {})
+    # Parse vectorization config (can be file path or inline)
+    vec_data = yaml_data.get('vectorization')
     if not vec_data:
         raise ValueError("Missing 'vectorization' section in YAML config")
 
+    vec_data = load_component_config(vec_data, 'vectorization', base_path)
     vectorization_config = VectorizationConfig(
         type=vec_data['type'],
         trainable=vec_data.get('trainable', False),
         params=vec_data.get('params', {})
     )
 
-    # Parse compression config
-    comp_data = yaml_data.get('compression', {})
+    # Parse compression config (can be file path or inline)
+    comp_data = yaml_data.get('compression')
     if not comp_data:
         raise ValueError("Missing 'compression' section in YAML config")
 
+    comp_data = load_component_config(comp_data, 'compression', base_path)
     compression_config = CompressionConfig(
         type=comp_data['type'],
         trainable=comp_data.get('trainable', False),

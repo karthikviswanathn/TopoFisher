@@ -3,40 +3,13 @@
 
 experiment:
   name: grf_topk_moped
-  output_dir: experiments/grf/topk_moped  # Results saved here
+  output_dir: experiments/grf/results/topk_moped  # Results saved here
   description: "Baseline GRF analysis with TopK vectorization and MOPED compression"
 
-# Analysis parameters (Fisher information analysis settings)
-analysis:
-  theta_fid: [1.0, 2.0]        # Fiducial parameters [A, B] for P(k) = A * k^(-B)
-  delta_theta: [0.1, 0.2]      # Step sizes for finite differences
-  n_s: 10000                   # Samples for covariance estimation
-  n_d: 10000                   # Samples for derivative estimation
-  seed_cov: 42                 # Seed for fiducial samples
-  seed_ders: [43, 44]          # Seeds for derivative samples (one per parameter)
-
-# Simulator configuration
-simulator:
-  type: grf
-  params:
-    N: 16                     # Grid size (32x32 for 2D)
-    dim: 2                    # Spatial dimension
-    # device: auto-detected (cuda if available, else cpu)
-
-# Filtration configuration
-filtration:
-  type: cubical
-  trainable: false            # Not learnable
-  params:
-    homology_dimensions: [0, 1]  # Compute H0 (components) and H1 (loops)
-
-vectorization:
-  type: combined              # Combine multiple vectorizations
-  trainable: false
-  params:
-    configs:                  # List of sub-vectorizations
-      - type: topk
-      - type: topk
+analysis: analysis/grf.yaml
+simulator: simulators/grf.yaml
+filtration: filtrations/cubical.yaml
+vectorization: vectorizations/topk_auto.yaml
 
 # Compression configuration
 compression:

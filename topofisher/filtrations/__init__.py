@@ -3,9 +3,11 @@
 from .cubical import CubicalLayer
 from .alpha import AlphaComplexLayer
 from .identity import IdentityFiltration
+from .learnable import LearnableFiltration
 
 __all__ = [
     'CubicalLayer',
     'AlphaComplexLayer',
     'IdentityFiltration',
+    'LearnableFiltration',
 ]

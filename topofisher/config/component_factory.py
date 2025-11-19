@@ -155,13 +155,16 @@ def create_combined_vectorization(params: Dict[str, Any], trainable: bool = Fals
         raise ValueError("Combined vectorization itself doesn't support training. "
                        "Set trainable=true on individual sub-vectorizations.")
 
-    # Extract sub-vectorization configs
-    if 'configs' not in params:
-        raise ValueError("Combined vectorization requires 'configs' parameter")
+    # Extract sub-vectorization configs (support both 'layers' and 'configs')
+    if 'layers' in params:
+        sub_configs = params['layers']
+    elif 'configs' in params:
+        sub_configs = params['configs']
+    else:
+        raise ValueError("Combined vectorization requires 'layers' (or 'configs') parameter")
 
-    sub_configs = params['configs']
     if not isinstance(sub_configs, list) or len(sub_configs) == 0:
-        raise ValueError("Combined vectorization 'configs' must be a non-empty list")
+        raise ValueError("Combined vectorization 'layers' must be a non-empty list")
 
     # Create sub-vectorizations
     vectorizations = []

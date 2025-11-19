@@ -18,8 +18,42 @@ import sys
 from pathlib import Path
 import torch
 import numpy as np
+import yaml
 
 from topofisher.config import load_pipeline_config, create_pipeline_from_config
+
+
+def extract_expanded_config(config, pipeline):
+    """Extract fully expanded configuration including auto-selected values."""
+    from dataclasses import asdict
+    from topofisher.vectorizations import CombinedVectorization, TopKLayer
+
+    # Convert config to dict
+    expanded = {
+        'experiment': asdict(config.experiment),
+        'analysis': asdict(config.analysis),
+        'simulator': asdict(config.simulator),
+        'filtration': asdict(config.filtration),
+        'vectorization': asdict(config.vectorization),
+        'compression': asdict(config.compression),
+    }
+
+    if config.training:
+        expanded['training'] = asdict(config.training)
+
+    # Extract auto-selected k values from TopK layers
+    if isinstance(pipeline.vectorization, CombinedVectorization):
+        layers = []
+        for layer in pipeline.vectorization.layers:
+            if isinstance(layer, TopKLayer) and layer.k is not None:
+                layers.append({
+                    'type': 'topk',
+                    'params': {'k': layer.k}  # Include auto-selected k
+                })
+        if layers:
+            expanded['vectorization']['params']['layers'] = layers
+
+    return expanded
 
 
 def main():
@@ -29,6 +63,10 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Verbose output')
     parser.add_argument('--save-results', action='store_true', default=True,
                         help='Save results to output directory')
+    parser.add_argument('--lr', type=float, default=None,
+                        help='Override learning rate from config')
+    parser.add_argument('--output-dir', type=str, default=None,
+                        help='Override output directory from config')
 
     args = parser.parse_args()
 
@@ -42,6 +80,15 @@ def main():
     except Exception as e:
         print(f"Error loading config: {e}")
         sys.exit(1)
+
+    # Apply command line overrides
+    if args.lr is not None and config.training is not None:
+        print(f"Overriding learning rate: {config.training.lr} → {args.lr}")
+        config.training.lr = args.lr
+
+    if args.output_dir is not None:
+        print(f"Overriding output directory: {config.experiment.output_dir} → {args.output_dir}")
+        config.experiment.output_dir = args.output_dir
 
     # Print configuration summary
     print(f"\nExperiment: {config.experiment.name}")
@@ -82,12 +129,18 @@ def main():
             print(f"  Learning rate: {config.training.lr}")
             print(f"  Batch size: {config.training.batch_size}")
 
+            # Generate data for training
+            print("\nGenerating data...")
+            data = pipeline.generate_data(pipeline_config)
+
             # Train the pipeline
             if hasattr(pipeline, 'run'):
-                result = pipeline.run(
+                training_result = pipeline.run(
                     config=pipeline_config,
-                    training_config=config.training
+                    training_config=config.training,
+                    data=data
                 )
+                result = training_result['test_result']
             else:
                 print("Error: Pipeline doesn't support training")
                 sys.exit(1)
@@ -106,7 +159,7 @@ def main():
     print(f"{'='*60}")
 
     print(f"\nFisher Information Matrix:")
-    print(result.fisher_matrix.cpu())
+    print(result.fisher_matrix.detach().cpu().numpy())
 
     print(f"\nlog|F| = {result.log_det_fisher.cpu().item():.4f}")
 
@@ -138,9 +191,17 @@ def main():
         output_dir = Path(config.experiment.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save config (for reproducibility)
-        import shutil
-        shutil.copy2(args.config, output_dir / "config.yaml")
+        # Save expanded config with auto-selected values
+        expanded_config = extract_expanded_config(config, pipeline)
+
+        # Custom representer to use flow style for lists
+        def represent_list(dumper, data):
+            return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=True)
+
+        yaml.add_representer(list, represent_list)
+
+        with open(output_dir / "config.yaml", 'w') as f:
+            yaml.dump(expanded_config, f, default_flow_style=False, sort_keys=False)
 
         # Collect component representations
         component_metadata = {}
@@ -176,7 +237,7 @@ def main():
             json.dump(results_dict, f, indent=2)
 
         # Save Fisher matrix as numpy (move to CPU first)
-        np.save(output_dir / 'fisher_matrix.npy', result.fisher_matrix.cpu().numpy())
+        np.save(output_dir / 'fisher_matrix.npy', result.fisher_matrix.detach().cpu().numpy())
 
         print(f"\nResults saved to: {output_dir}")
 

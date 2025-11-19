@@ -16,29 +16,20 @@ class LearnableCompressionPipeline(LearnablePipeline):
     PyTorch automatically tracks and trains any learnable parameters.
     """
 
-    def forward_pass(
-        self,
-        data: List[torch.Tensor],
-        delta_theta: torch.Tensor
-    ) -> torch.Tensor:
+    def _compute_summaries(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
         """
-        Forward pass for compression training.
+        Compute compressed summaries from vectorized summaries.
+
+        Pipeline: summaries → compression
 
         Args:
             data: Vectorized summaries [fid, minus_0, plus_0, ...]
-            delta_theta: Parameter step sizes (for finite differences in FisherAnalyzer)
 
         Returns:
-            Loss (negative log Fisher determinant)
+            List of compressed summary tensors [fid, minus_0, plus_0, ...]
         """
-        # Apply compression (no delta_theta needed - Fisher matrix invariant to scaling)
         compressed = self.compression(data)
-
-        # Compute Fisher using finite differences
-        fisher_result = self.fisher_analyzer.compute_fisher(compressed, delta_theta)
-
-        # Return loss
-        return -fisher_result.log_det_fisher
+        return compressed
 
     def generate_summaries(self, config):
         """

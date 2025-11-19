@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import gudhi
+from tqdm import tqdm
 
 
 class CubicalLayer(nn.Module):
@@ -19,7 +20,8 @@ class CubicalLayer(nn.Module):
     def __init__(
         self,
         homology_dimensions: List[int],
-        min_persistence: Optional[List[float]] = None
+        min_persistence: Optional[List[float]] = None,
+        show_progress: bool = False
     ):
         """
         Initialize cubical complex layer.
@@ -28,10 +30,12 @@ class CubicalLayer(nn.Module):
             homology_dimensions: List of homology dimensions to compute (e.g., [0, 1])
             min_persistence: Minimum persistence threshold for each dimension
                            (default: 0 for all dimensions)
+            show_progress: Whether to show progress bar during computation (default: False)
         """
         super().__init__()
         self.dimensions = homology_dimensions
         self.min_persistence = min_persistence if min_persistence is not None else [0.0] * len(self.dimensions)
+        self.show_progress = show_progress
 
         assert len(self.min_persistence) == len(self.dimensions), \
             "min_persistence must have same length as homology_dimensions"
@@ -76,7 +80,8 @@ class CubicalLayer(nn.Module):
         all_diagrams = [[] for _ in self.dimensions]
 
         # Compute diagrams for each sample
-        for i in range(n_samples):
+        iterator = tqdm(range(n_samples), desc="Computing Cubical Complex") if self.show_progress else range(n_samples)
+        for i in iterator:
             sample_diagrams = self._compute_single_diagram(X[i], device)
 
             # Organize by homology dimension

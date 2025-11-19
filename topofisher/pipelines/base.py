@@ -40,11 +40,23 @@ class BasePipeline(nn.Module):
             fisher_analyzer: Fisher matrix computation
         """
         super().__init__()
+
+        # Auto-detect device (single source of truth)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        # Store components
         self.simulator = simulator
         self.filtration = filtration
         self.vectorization = vectorization
         self.compression = compression
         self.fisher_analyzer = fisher_analyzer
+
+        # Move all nn.Module components to device
+        self.to(self.device)
+
+        # Move simulator to device if it has a device attribute
+        if hasattr(self.simulator, 'device'):
+            self.simulator.device = self.device
 
     def generate_data(self, config: PipelineConfig) -> List[torch.Tensor]:
         """

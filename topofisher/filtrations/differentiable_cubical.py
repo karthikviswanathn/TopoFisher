@@ -1,16 +1,19 @@
 """
-Differentiable cubical complex filtration using torch.gather approach.
+Differentiable cubical complex filtration using GUDHI cofaces approach.
 
-This module implements a differentiable cubical persistence layer inspired by
-GUDHI's TensorFlow implementation. The key idea:
+This module implements a differentiable cubical persistence layer following
+GUDHI's TensorFlow implementation approach. The key idea:
 
 1. Compute persistence topology using GUDHI (non-differentiable)
-2. Extract critical cell indices from persistence pairs
-3. Use torch.gather to get actual values from input tensor (differentiable!)
+2. Extract critical cell indices using cofaces_of_persistence_pairs()
+3. Gather values from input tensor using indices (differentiable!)
 4. Gradients flow back through gather operation to input
 
 This enables end-to-end training of networks that transform fields before
 persistence computation, optimizing topological features for downstream tasks.
+
+Key improvement: Uses GUDHI's cofaces API to directly get cell indices,
+eliminating the need for noise-based value mapping.
 """
 from typing import List, Optional, Tuple
 import torch
@@ -108,14 +111,8 @@ class DifferentiableCubicalLayer(nn.Module):
         """
         Compute differentiable persistence diagram for a single sample.
 
-        Strategy (noise-based indexing):
-        1. Add tiny unique noise to make pixel values unique: X' = X + ε * arange
-        2. Compute persistence on X' to get unique birth/death values
-        3. Map values back to pixel indices
-        4. Gather from ORIGINAL X using torch.gather (preserves gradients!)
-
-        The noise is tiny (ε=1e-6) so it doesn't affect topology, but makes
-        all pixel values unique for reliable indexing.
+        Direct translation of GUDHI TensorFlow CubicalLayer implementation:
+        https://gudhi.inria.fr/python/latest/_modules/gudhi/tensorflow/cubical_layer.html
 
         Args:
             X_sample: Single grid sample of shape (H, W)
@@ -126,65 +123,47 @@ class DifferentiableCubicalLayer(nn.Module):
         """
         H, W = X_sample.shape
 
-        # Step 1: Add tiny unique noise for indexing
-        epsilon = 1e-6
-        noise = torch.arange(H * W, dtype=X_sample.dtype, device=device).reshape(H, W) * epsilon
-        X_with_noise = X_sample.detach() + noise
+        # Flatten input (same as TensorFlow version)
+        Xflat = X_sample.flatten()
+        Xflat_numpy = X_sample.detach().cpu().numpy().flatten()
 
-        # Step 2: Compute persistence on noised version
-        X_numpy = X_with_noise.cpu().numpy().flatten()
-
-        cubical_complex = gudhi.CubicalComplex(
+        # Compute cubical persistence
+        cc = gudhi.CubicalComplex(
             dimensions=[H, W],
-            top_dimensional_cells=X_numpy
+            top_dimensional_cells=Xflat_numpy
         )
-        cubical_complex.compute_persistence()
+        cc.compute_persistence()
 
-        # Step 3: For each homology dimension, map values to indices and gather
+        # Get cofaces of persistence pairs
+        cof_pp = cc.cofaces_of_persistence_pairs()
+
+        # Process each homology dimension
         diagrams = []
-        for idx_dim, dimension in enumerate(self.dimensions):
-            # Get persistence intervals (birth, death) values
-            persistence_intervals = cubical_complex.persistence_intervals_in_dimension(dimension)
+        for idx_dim, dim in enumerate(self.dimensions):
+            # Get cofaces for this dimension
+            # cof_pp[0] contains the finite pairs
+            if len(cof_pp[0]) > dim and len(cof_pp[0][dim]) > 0:
+                cof = cof_pp[0][dim]
 
-            # Filter out infinite death times
-            finite_pairs = persistence_intervals[persistence_intervals[:, 1] < np.inf]
+                # Convert to torch tensor (tf.constant -> torch.tensor)
+                cof = torch.tensor(cof, device=device, dtype=torch.long)
 
-            if len(finite_pairs) == 0:
+                # Gather values (tf.gather -> torch indexing)
+                # tf.gather(Xflat, cof) -> Xflat[cof.flatten()]
+                gathered = Xflat[cof.flatten()]
+
+                # Reshape to pairs (tf.reshape -> torch.reshape)
+                finite_dgm = gathered.reshape(-1, 2)
+
+                # Apply minimum persistence threshold
+                min_pers = self.min_persistence[idx_dim]
+                if min_pers > 0:
+                    persistence = torch.abs(finite_dgm[:, 1] - finite_dgm[:, 0])
+                    finite_dgm = finite_dgm[persistence > min_pers]
+
+                diagrams.append(finite_dgm)
+            else:
+                # Empty diagram for this dimension
                 diagrams.append(torch.empty((0, 2), device=device))
-                continue
-
-            # Step 4: Map birth/death values to pixel indices
-            X_flat_noised = X_with_noise.flatten().detach().cpu().numpy()
-
-            birth_indices = []
-            death_indices = []
-
-            for birth_val, death_val in finite_pairs:
-                # Find pixel with closest value (should be exact due to noise)
-                birth_idx = np.argmin(np.abs(X_flat_noised - birth_val))
-                death_idx = np.argmin(np.abs(X_flat_noised - death_val))
-
-                birth_indices.append(birth_idx)
-                death_indices.append(death_idx)
-
-            # Step 5: Gather values from ORIGINAL (non-noised) tensor
-            birth_indices_t = torch.tensor(birth_indices, device=device, dtype=torch.long)
-            death_indices_t = torch.tensor(death_indices, device=device, dtype=torch.long)
-
-            # Ensure X_sample is on the correct device before indexing
-            X_flat_original = X_sample.to(device).flatten()
-            birth_values = X_flat_original[birth_indices_t]
-            death_values = X_flat_original[death_indices_t]
-
-            # Stack into diagram
-            diagram = torch.stack([birth_values, death_values], dim=1)
-
-            # Apply minimum persistence threshold
-            min_pers = self.min_persistence[idx_dim]
-            if min_pers > 0:
-                persistence = torch.abs(diagram[:, 1] - diagram[:, 0])
-                diagram = diagram[persistence > min_pers]
-
-            diagrams.append(diagram)
 
         return diagrams

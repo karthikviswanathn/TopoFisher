@@ -15,7 +15,7 @@ class TopKBaseLayer(nn.Module):
     automatic k determination during fit().
     """
 
-    def __init__(self, k: Optional[int] = None, pad_value: float = 0.0):
+    def __init__(self, k: Optional[int] = None, pad_value: float = 0.0, verbose: bool = False):
         """
         Initialize base Top-K layer.
 
@@ -23,11 +23,13 @@ class TopKBaseLayer(nn.Module):
             k: Number of top elements to keep. If None, will be
                automatically determined during fit() as 95% of minimum diagram size.
             pad_value: Value to use for padding if fewer than k points exist
+            verbose: If True, print auto-selection messages
         """
         super().__init__()
         self.k = k
         self.k_provided = k is not None  # Track if k was explicitly provided
         self.pad_value = pad_value
+        self.verbose = verbose
         # n_features will be set after k is determined
         # Both subclasses use 2k features (either k births + k deaths, or k points × 2 coords)
         self.n_features = k * 2 if k is not None else None
@@ -63,8 +65,9 @@ class TopKBaseLayer(nn.Module):
             min_points = min(point_counts)
             self.k = max(1, int(0.95 * min_points))
 
-            print(f"{self.__class__.__name__}: Auto-selected k={self.k} "
-                  f"(95% of min={min_points} points)")
+            if self.verbose:
+                print(f"{self.__class__.__name__}: Auto-selected k={self.k} "
+                      f"(95% of min={min_points} points)")
 
         # Update n_features now that k is determined
         self.n_features = self.k * 2
@@ -100,7 +103,7 @@ class TopKBirthsDeathsLayer(TopKBaseLayer):
     95% of the minimum number of points across all diagrams.
     """
 
-    def __init__(self, k: Optional[int] = None, pad_value: float = 0.0):
+    def __init__(self, k: Optional[int] = None, pad_value: float = 0.0, verbose: bool = False):
         """
         Initialize Top-K births/deaths layer.
 
@@ -108,8 +111,9 @@ class TopKBirthsDeathsLayer(TopKBaseLayer):
             k: Number of top births and top deaths to keep. If None, will be
                automatically determined during fit() as 95% of minimum diagram size.
             pad_value: Value to use for padding if fewer than k points exist
+            verbose: If True, print auto-selection messages
         """
-        super().__init__(k=k, pad_value=pad_value)
+        super().__init__(k=k, pad_value=pad_value, verbose=verbose)
 
     def forward(self, diagrams: List[torch.Tensor]) -> torch.Tensor:
         """
@@ -173,7 +177,7 @@ class TopKLayer(TopKBaseLayer):
     95% of the minimum number of points across all diagrams.
     """
 
-    def __init__(self, k: Optional[int] = None, pad_value: float = 0.0):
+    def __init__(self, k: Optional[int] = None, pad_value: float = 0.0, verbose: bool = False):
         """
         Initialize Top-K layer.
 
@@ -181,8 +185,9 @@ class TopKLayer(TopKBaseLayer):
             k: Number of top persistent points to keep. If None, will be
                automatically determined during fit() as 95% of minimum diagram size.
             pad_value: Value to use for padding if fewer than k points exist
+            verbose: If True, print auto-selection messages
         """
-        super().__init__(k=k, pad_value=pad_value)
+        super().__init__(k=k, pad_value=pad_value, verbose=verbose)
 
     def forward(self, diagrams: List[torch.Tensor]) -> torch.Tensor:
         """
