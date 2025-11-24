@@ -13,7 +13,6 @@ from abc import abstractmethod
 from typing import List, Tuple, Dict, Any
 from ..base import BasePipeline
 from ..configs.data_types import PipelineConfig, TrainingConfig, FisherResult
-from ...fisher.gaussianity import test_gaussianity
 
 class LearnablePipeline(BasePipeline):
     """
@@ -125,22 +124,16 @@ class LearnablePipeline(BasePipeline):
         Args:
             data: Input data
             delta_theta: Parameter step sizes
-            check_gaussianity: If True, also check Gaussianity (no extra computation)
+            check_gaussianity: If True, also check Gaussianity
 
         Returns:
-            FisherResult with fisher_matrix, constraints, log_det_fisher
-            If check_gaussianity=True, also includes 'passes_gaussianity' attribute
+            FisherResult with fisher_matrix, constraints, log_det_fisher, is_gaussian
         """
         # Get compressed summaries (subclass-specific implementation)
         compressed = self._compute_summaries(data)
 
-        # Compute Fisher result
-        fisher_result = self.fisher_analyzer(compressed, delta_theta)
-
-        # Gaussianity check and updating fisher_result
-        if check_gaussianity:
-            _, passes_gaussianity = test_gaussianity(compressed, verbose=False)
-            fisher_result.passes_gaussianity = passes_gaussianity
+        # Compute Fisher result (with optional Gaussianity check)
+        fisher_result = self.fisher_analyzer(compressed, delta_theta, check_gaussianity=check_gaussianity)
 
         return fisher_result
 
@@ -228,17 +221,17 @@ class LearnablePipeline(BasePipeline):
             if (epoch + 1) % training_config.validate_every == 0:
                 self.eval()  # Set entire pipeline to eval mode
                 with torch.no_grad():
-                    val_result = self.compute_fisher_result(val_data, delta_theta, check_gaussianity=training_config.check_gaussianity)
+                    val_result = self.compute_fisher_result(val_data, delta_theta, check_gaussianity=True)
                     val_loss = -val_result.log_det_fisher
 
                 val_losses.append(val_loss.item())
 
                 # Check validation conditions
                 is_best_loss = val_loss.item() < best_val_loss
-                passes_gaussianity = val_result.passes_gaussianity  
+                is_gaussian = val_result.is_gaussian 
 
                 # Save best model (both conditions must pass)
-                if is_best_loss and passes_gaussianity:
+                if is_best_loss and is_gaussian:
                     best_val_loss = val_loss.item()
                     best_epoch = epoch + 1
                     best_model_state = {
@@ -252,7 +245,7 @@ class LearnablePipeline(BasePipeline):
                               f"Best Loss: ✓, Gaussianity: ✓ → Model updated")
                 elif training_config.verbose:
                     best_loss_mark = "✓" if is_best_loss else "✗"
-                    gaussian_mark = "✓" if passes_gaussianity else "✗"
+                    gaussian_mark = "✓" if is_gaussian else "✗"
                     print(f"  Epoch {epoch+1}/{training_config.n_epochs}: "
                           f"Train Loss={loss.item():.3f}, "
                           f"Val Loss={val_loss.item():.3f}, "
@@ -311,7 +304,7 @@ class LearnablePipeline(BasePipeline):
             delta_theta: Parameter step sizes
 
         Returns:
-            Fisher result with matrix, constraints, log determinant, and passes_gaussianity
+            Fisher result with matrix, constraints, log determinant, and is_gaussian
         """
         # Always check Gaussianity on test data
         return self.compute_fisher_result(data, delta_theta, check_gaussianity=True)

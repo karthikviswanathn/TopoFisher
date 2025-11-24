@@ -167,6 +167,9 @@ def main():
     for i, (param, sigma) in enumerate(zip(config.analysis.theta_fid, result.constraints.cpu())):
         print(f"  θ_{i} = {param:.2f} ± {sigma.item():.4f}")
 
+    # Gaussianity check
+    result.print_gaussianity()
+
     # Compare with theoretical if available
     if hasattr(pipeline.simulator, 'theoretical_fisher_matrix'):
         print(f"\n{'='*60}")

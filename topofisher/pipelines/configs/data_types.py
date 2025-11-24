@@ -44,5 +44,13 @@ class FisherResult:
     # Optional diagnostic information
     bias_error: Optional[torch.Tensor] = None
     fractional_bias: Optional[torch.Tensor] = None
-    is_gaussian: bool = True
+    is_gaussian: Optional[bool] = None
     gaussianity_details: Optional[Dict[str, Any]] = None
+
+    def print_gaussianity(self):
+        """Print Gaussianity check result."""
+        if self.is_gaussian is None:
+            print("\nGaussianity Check: Not performed")
+        else:
+            gauss_mark = "✓ PASS" if self.is_gaussian else "✗ FAIL"
+            print(f"\nGaussianity Check: {gauss_mark}")

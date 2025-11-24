@@ -6,7 +6,7 @@ experiment:
   output_dir: experiments/grf/results/topk_moped  # Results saved here
   description: "Baseline GRF analysis with TopK vectorization and MOPED compression"
 
-analysis: analysis/grf.yaml
+analysis: analysis/grf_standard.yaml
 simulator: simulators/grf.yaml
 filtration: filtrations/cubical.yaml
 vectorization: vectorizations/topk_auto.yaml

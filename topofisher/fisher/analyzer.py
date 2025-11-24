@@ -5,6 +5,7 @@ from typing import List
 import torch
 import torch.nn as nn
 from ..pipelines.configs.data_types import FisherResult
+from .gaussianity import test_gaussianity
 
 
 class FisherAnalyzer(nn.Module):
@@ -32,7 +33,8 @@ class FisherAnalyzer(nn.Module):
     def forward(
         self,
         summaries: List[torch.Tensor],
-        delta_theta: torch.Tensor
+        delta_theta: torch.Tensor,
+        check_gaussianity: bool = False
     ) -> FisherResult:
         """
         Compute Fisher information from summaries.
@@ -43,6 +45,7 @@ class FisherAnalyzer(nn.Module):
                 summaries[1:]: shape (n_d, n_features) at perturbed values
                     Ordered as [..., theta_minus_i, theta_plus_i, ...]
             delta_theta: Tensor of shape (n_params,) with step sizes
+            check_gaussianity: If True, run Gaussianity test on summaries
 
         Returns:
             FisherResult containing Fisher matrix and related quantities
@@ -55,13 +58,19 @@ class FisherAnalyzer(nn.Module):
         fisher_matrix, inv_fisher, mean_derivatives, C, log_det_fisher, constraints = \
             self._compute_fisher(summaries, delta_theta)
 
+        # Gaussianity check
+        is_gaussian = None
+        if check_gaussianity:
+            _, is_gaussian = test_gaussianity(summaries, verbose=False)
+
         return FisherResult(
             fisher_matrix=fisher_matrix,
             inverse_fisher=inv_fisher,
             derivatives=mean_derivatives,
             covariance=C,
             log_det_fisher=log_det_fisher,
-            constraints=constraints
+            constraints=constraints,
+            is_gaussian=is_gaussian
         )
 
     def _compute_fisher(

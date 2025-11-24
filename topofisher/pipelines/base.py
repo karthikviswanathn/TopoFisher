@@ -9,7 +9,6 @@ import torch.nn as nn
 
 from .configs.data_types import PipelineConfig, FisherResult
 
-
 class BasePipeline(nn.Module):
     """
     Base pipeline for Fisher information analysis.
@@ -173,7 +172,8 @@ class BasePipeline(nn.Module):
     def compute_fisher(
         self,
         compressed_summaries: List[torch.Tensor],
-        delta_theta: torch.Tensor
+        delta_theta: torch.Tensor,
+        check_gaussianity: bool = False
     ) -> FisherResult:
         """
         Compute Fisher information matrix.
@@ -181,11 +181,12 @@ class BasePipeline(nn.Module):
         Args:
             compressed_summaries: Compressed summary tensors
             delta_theta: Parameter step sizes
+            check_gaussianity: If True, run Gaussianity test
 
         Returns:
             Fisher analysis results
         """
-        return self.fisher_analyzer(compressed_summaries, delta_theta)
+        return self.fisher_analyzer(compressed_summaries, delta_theta, check_gaussianity=check_gaussianity)
 
     def forward(self, config: PipelineConfig) -> FisherResult:
         """
@@ -209,7 +210,7 @@ class BasePipeline(nn.Module):
         # 4. Compress summaries
         compressed_summaries = self.compress(all_summaries, config.delta_theta)
 
-        # 5. Compute Fisher matrix
-        result = self.compute_fisher(compressed_summaries, config.delta_theta)
+        # 5. Compute Fisher matrix (with Gaussianity check)
+        result = self.compute_fisher(compressed_summaries, config.delta_theta, check_gaussianity=True)
 
         return result
