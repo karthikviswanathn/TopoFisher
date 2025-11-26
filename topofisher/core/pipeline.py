@@ -31,7 +31,7 @@ class FisherPipeline(nn.Module):
 
         Args:
             simulator: Simulator module (e.g., GRFSimulator)
-            filtration: Filtration module (e.g., CubicalLayer)
+            filtration: Filtration module (e.g., CubicalLayer, MMALayer)
             vectorization: Vectorization module (e.g., CombinedVectorization)
             compression: Compression module (e.g., MOPEDCompression, IdentityCompression)
             fisher_analyzer: Fisher analyzer module
@@ -65,24 +65,45 @@ class FisherPipeline(nn.Module):
         # Step 1: Generate simulations
         all_data = self._generate_data(config)
 
-        # Step 2: Compute persistence diagrams
-        all_diagrams = []
-        for data in all_data:
-            diagrams = self.filtration(data)
-            all_diagrams.append(diagrams)
-
-        # Step 3: Vectorize persistence diagrams
+        # Step 2: Compute filtration + vectorize
         all_summaries = []
-        for diagrams in all_diagrams:  # For each simulation set
-            summary = self.vectorization(diagrams)
+        
+        for data in all_data:
+            # Check if filtration needs gradient (MMA)
+            if hasattr(self.filtration, 'forward') and 'gradient' in self.filtration.forward.__code__.co_varnames:
+                # MMA filtration
+                gradients = self._compute_gradient_magnitude(data)
+                diagrams_or_mma = self.filtration(data, gradients)
+            else:
+                # Standard filtration
+                diagrams_or_mma = self.filtration(data)
+            
+            # Check if vectorization needs field and gradient (MMA layers)
+            # Look at first layer in CombinedVectorization
+            first_layer = self.vectorization.layers[0] if hasattr(self.vectorization, 'layers') else self.vectorization
+            needs_field_grad = hasattr(first_layer, 'homology_dimension')  # MMA layers have this
+            
+            if needs_field_grad:
+                # MMA vectorization: call each layer separately
+                # MMA returns list of PyModule objects [sample0, sample1, ...]
+                gradients = self._compute_gradient_magnitude(data)
+                all_features = []
+                for layer in self.vectorization.layers:
+                    features = layer(diagrams_or_mma, data, gradients)
+                    all_features.append(features)
+                summary = torch.cat(all_features, dim=-1)
+            else:
+                # Standard vectorization: already has [dim][sample] structure
+                summary = self.vectorization(diagrams_or_mma)
+            
             all_summaries.append(summary)
 
-        # Step 4: Train compression if needed
+        # Step 3: Train compression if needed
         training_history = None
         if training_config is not None:
             training_history = self.compression.train_compression(all_summaries, config.delta_theta, training_config)
 
-        # Step 5: Apply compression
+        # Step 4: Apply compression
         compressed_summaries = self.compression(all_summaries, config.delta_theta)
 
         # Check if compression returns test set only or all data
@@ -97,7 +118,7 @@ class FisherPipeline(nn.Module):
             if compressed_summaries[0].shape[0] == config.n_s and compressed_summaries[1].shape[0] == config.n_d:
                 print("WARNING: Using all data for Fisher analysis (no train/test split)")
 
-        # Step 6: Gaussianity check (before Fisher analysis)
+        # Step 5: Gaussianity check (before Fisher analysis)
         from ..fisher.gaussianity import test_gaussianity
         if verbose_gaussianity:
             print("\n" + "=" * 80)
@@ -105,7 +126,7 @@ class FisherPipeline(nn.Module):
             print("=" * 80)
         gauss_results, is_gaussian = test_gaussianity(compressed_summaries, alpha=0.05, mode="summary", verbose=verbose_gaussianity)
 
-        # Step 7: Fisher analysis
+        # Step 6: Fisher analysis
         result = self.fisher_analyzer(compressed_summaries, config.delta_theta)
 
         # Add Gaussianity flag and details to result
@@ -180,3 +201,43 @@ class FisherPipeline(nn.Module):
             all_data.extend([data_minus, data_plus])
 
         return all_data
+
+    def _compute_gradient_magnitude(self, fields):
+        """Compute gradient magnitude from fields."""
+        if fields.ndim == 3:
+            batch_size = fields.shape[0]
+            gradients = []
+            for i in range(batch_size):
+                field_2d = fields[i]
+                H, W = field_2d.shape
+                grad_x = torch.zeros_like(field_2d)
+                grad_y = torch.zeros_like(field_2d)
+                
+                grad_x[:, 1:-1] = (field_2d[:, 2:] - field_2d[:, :-2]) / 2.0
+                grad_y[1:-1, :] = (field_2d[2:, :] - field_2d[:-2, :]) / 2.0
+                
+                grad_x[:, 0] = field_2d[:, 1] - field_2d[:, 0]
+                grad_y[0, :] = field_2d[1, :] - field_2d[0, :]
+                grad_x[:, -1] = field_2d[:, -1] - field_2d[:, -2]
+                grad_y[-1, :] = field_2d[-1, :] - field_2d[-2, :]
+                
+                gradient_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
+                gradients.append(gradient_magnitude)
+            
+            return torch.stack(gradients)
+        else:
+            # Single sample
+            field_2d = fields
+            H, W = field_2d.shape
+            grad_x = torch.zeros_like(field_2d)
+            grad_y = torch.zeros_like(field_2d)
+            
+            grad_x[:, 1:-1] = (field_2d[:, 2:] - field_2d[:, :-2]) / 2.0
+            grad_y[1:-1, :] = (field_2d[2:, :] - field_2d[:-2, :]) / 2.0
+            
+            grad_x[:, 0] = field_2d[:, 1] - field_2d[:, 0]
+            grad_y[0, :] = field_2d[1, :] - field_2d[0, :]
+            grad_x[:, -1] = field_2d[:, -1] - field_2d[:, -2]
+            grad_y[-1, :] = field_2d[-1, :] - field_2d[-2, :]
+            
+            return torch.sqrt(grad_x**2 + grad_y**2)
