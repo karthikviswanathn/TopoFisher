@@ -344,10 +344,12 @@ class LearnablePipeline(BasePipeline):
             seed=42  # Fixed seed for reproducibility
         )
 
+        # Track split sizes (needed for return value)
+        n_train = train_data[0].shape[0]
+        n_val = val_data[0].shape[0]
+        n_test = test_data[0].shape[0]
+
         if training_config.verbose:
-            n_train = train_data[0].shape[0]
-            n_val = val_data[0].shape[0]
-            n_test = test_data[0].shape[0]
             print(f"  Train: {n_train}, Val: {n_val}, Test: {n_test}")
 
         # 2. Train (internally uses evaluate() on validation)

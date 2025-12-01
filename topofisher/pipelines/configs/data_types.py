@@ -7,6 +7,15 @@ import torch
 
 
 @dataclass
+class CacheConfig:
+    """Configuration for caching diagrams and summaries."""
+    source: str                              # "diagrams", "summaries", or "generate"
+    source_path: Optional[str] = None        # Path to load from (if source != "generate")
+    save_diagrams: Optional[str] = None      # Path to save diagrams
+    save_summaries: Optional[str] = None     # Path to save summaries
+
+
+@dataclass
 class PipelineConfig:
     """Configuration for pipeline execution."""
     theta_fid: torch.Tensor          # Fiducial parameter values
@@ -15,6 +24,7 @@ class PipelineConfig:
     n_d: int                         # Number of samples for derivative estimation
     seed_cov: Optional[int] = None   # Seed for covariance simulations
     seed_ders: Optional[list] = None # Seeds for derivative simulations (one per parameter)
+    cache: Optional[CacheConfig] = None  # Cache configuration for cached pipelines
 
 
 @dataclass
