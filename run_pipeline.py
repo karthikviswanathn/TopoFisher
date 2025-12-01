@@ -28,16 +28,18 @@ def extract_expanded_config(config, pipeline):
     from dataclasses import asdict
     from topofisher.vectorizations import CombinedVectorization, TopKLayer
 
-    # Convert config to dict
+    # Convert config to dict (handle None for optional components)
     expanded = {
         'experiment': asdict(config.experiment),
         'analysis': asdict(config.analysis),
-        'simulator': asdict(config.simulator),
-        'filtration': asdict(config.filtration),
         'vectorization': asdict(config.vectorization),
         'compression': asdict(config.compression),
     }
 
+    if config.simulator:
+        expanded['simulator'] = asdict(config.simulator)
+    if config.filtration:
+        expanded['filtration'] = asdict(config.filtration)
     if config.training:
         expanded['training'] = asdict(config.training)
 
@@ -100,8 +102,8 @@ def main():
     print(f"  delta_theta: {config.analysis.delta_theta}")
     print(f"  n_s: {config.analysis.n_s}, n_d: {config.analysis.n_d}")
     print(f"\nPipeline components:")
-    print(f"  Simulator: {config.simulator.type}")
-    print(f"  Filtration: {config.filtration.type} (trainable={config.filtration.trainable})")
+    print(f"  Simulator: {config.simulator.type if config.simulator else 'N/A (cached)'}")
+    print(f"  Filtration: {config.filtration.type if config.filtration else 'N/A (cached)'}")
     print(f"  Vectorization: {config.vectorization.type} (trainable={config.vectorization.trainable})")
     print(f"  Compression: {config.compression.type} (trainable={config.compression.trainable})")
 
@@ -116,42 +118,65 @@ def main():
         print(f"Error creating pipeline: {e}")
         sys.exit(1)
 
-    # Convert analysis config to pipeline config
-    from topofisher.config import create_pipeline_config
-    pipeline_config = create_pipeline_config(config.analysis)
+    # Use analysis config directly (no conversion needed)
+    analysis_config = config.analysis
 
-    # Check if training is needed
-    if config.is_trainable():
-        if args.train:
-            print(f"\nTraining {config.get_trainable_component()} component...")
-            print(f"Training config:")
-            print(f"  Epochs: {config.training.n_epochs}")
-            print(f"  Learning rate: {config.training.lr}")
-            print(f"  Batch size: {config.training.batch_size}")
+    # Check for generate mode (special case - no training, just save data)
+    if analysis_config.cache is not None and analysis_config.cache.mode == "generate":
+        print(f"\n{'='*60}")
+        print("Running in GENERATE mode")
+        print(f"{'='*60}")
 
-            # Generate data for training
-            print("\nGenerating data...")
-            data = pipeline.generate_data(pipeline_config)
+        result_dict = pipeline.run(analysis_config)
 
-            # Train the pipeline
-            if hasattr(pipeline, 'run'):
-                training_result = pipeline.run(
-                    config=pipeline_config,
-                    training_config=config.training,
-                    data=data
-                )
-                result = training_result['test_result']
-            else:
-                print("Error: Pipeline doesn't support training")
-                sys.exit(1)
-        else:
-            print("\nWarning: Pipeline has trainable components but --train not specified")
-            print("Running inference only (may fail if components aren't pre-trained)")
-            result = pipeline(pipeline_config)
+        print(f"\nGeneration complete!")
+        print(f"  Data type: {result_dict.get('data_type', 'unknown')}")
+        if 'saved_diagrams' in result_dict:
+            print(f"  Saved to: {result_dict['saved_diagrams']}")
+        if 'saved_summaries' in result_dict:
+            print(f"  Saved to: {result_dict['saved_summaries']}")
+
+        print(f"\n{'='*60}")
+        print("Generation completed successfully!")
+        print(f"{'='*60}\n")
+        return
+
+    # Training mode (cache load or regular trainable)
+    needs_training = (analysis_config.cache is not None and analysis_config.cache.mode == "load") or \
+                     (config.is_trainable() and args.train)
+
+    if needs_training:
+        if not config.training:
+            print("Error: Training config required")
+            sys.exit(1)
+
+        print(f"\nTraining {config.get_trainable_component()} component...")
+        print(f"Training config:")
+        print(f"  Epochs: {config.training.n_epochs}")
+        print(f"  Learning rate: {config.training.lr}")
+        print(f"  Batch size: {config.training.batch_size}")
+
+        # Generate/load data
+        print("\nPreparing data...")
+        data = pipeline.generate_data(analysis_config)
+
+        # Train the pipeline
+        training_result = pipeline.run(
+            config=analysis_config,
+            training_config=config.training,
+            data=data
+        )
+        result = training_result['test_result']
+
+    elif config.is_trainable() and not args.train:
+        print("\nWarning: Pipeline has trainable components but --train not specified")
+        print("Running inference only (may fail if components aren't pre-trained)")
+        result = pipeline(analysis_config)
+
     else:
         # Run inference
         print("\nRunning pipeline...")
-        result = pipeline(pipeline_config)
+        result = pipeline(analysis_config)
 
     # Print results
     print(f"\n{'='*60}")
@@ -171,7 +196,7 @@ def main():
     result.print_gaussianity()
 
     # Compare with theoretical if available
-    if hasattr(pipeline.simulator, 'theoretical_fisher_matrix'):
+    if pipeline.simulator and hasattr(pipeline.simulator, 'theoretical_fisher_matrix'):
         print(f"\n{'='*60}")
         print("Comparison with Theoretical")
         print(f"{'='*60}")
@@ -226,8 +251,8 @@ def main():
             'log_det_fisher': result.log_det_fisher.cpu().item(),
             'constraints': result.constraints.cpu().tolist(),
             'analysis': {
-                'theta_fid': config.analysis.theta_fid,
-                'delta_theta': config.analysis.delta_theta,
+                'theta_fid': config.analysis.theta_fid.tolist(),
+                'delta_theta': config.analysis.delta_theta.tolist(),
                 'n_s': config.analysis.n_s,
                 'n_d': config.analysis.n_d
             },

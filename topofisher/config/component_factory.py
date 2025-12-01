@@ -342,24 +342,3 @@ def create_fisher_analyzer(clean_data: bool = True):
     from ..fisher import FisherAnalyzer
     return FisherAnalyzer(clean_data=clean_data)
 
-
-def create_pipeline_config(analysis_config: AnalysisConfig):
-    """
-    Convert AnalysisConfig to PipelineConfig for pipeline execution.
-
-    Args:
-        analysis_config: Analysis configuration from YAML
-
-    Returns:
-        PipelineConfig instance
-    """
-    from ..pipelines import PipelineConfig
-
-    return PipelineConfig(
-        theta_fid=torch.tensor(analysis_config.theta_fid),
-        delta_theta=torch.tensor(analysis_config.delta_theta),
-        n_s=analysis_config.n_s,
-        n_d=analysis_config.n_d,
-        seed_cov=analysis_config.seed_cov,
-        seed_ders=analysis_config.seed_ders
-    )

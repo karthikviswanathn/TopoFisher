@@ -1,20 +1,20 @@
 """Fisher information pipelines."""
 
 from .base import BasePipeline
-from .configs.data_types import PipelineConfig, TrainingConfig, FisherResult, CacheConfig
+from ..config import AnalysisConfig, TrainingConfig, FisherResult, CacheConfig
 from .learnable import (
     LearnablePipeline,
     LearnableCompressionPipeline,
     LearnableVectorizationPipeline,
     LearnableFiltrationPipeline,
 )
-from .cached import CachedPipeline, CachedCompressionPipeline
+from .cached import CachedPipeline, GenerateCachePipeline, CachedCompressionPipeline
 
 __all__ = [
     # Base
     'BasePipeline',
     # Configs
-    'PipelineConfig',
+    'AnalysisConfig',
     'TrainingConfig',
     'FisherResult',
     'CacheConfig',
@@ -25,5 +25,6 @@ __all__ = [
     'LearnableFiltrationPipeline',
     # Cached pipelines
     'CachedPipeline',
+    'GenerateCachePipeline',
     'CachedCompressionPipeline',
 ]

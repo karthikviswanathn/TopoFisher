@@ -4,7 +4,7 @@ Fisher information analysis.
 from typing import List
 import torch
 import torch.nn as nn
-from ..pipelines.configs.data_types import FisherResult
+from ..config import FisherResult
 from .gaussianity import test_gaussianity
 
 

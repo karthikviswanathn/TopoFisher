@@ -37,7 +37,7 @@ class LearnableVectorizationPipeline(LearnablePipeline):
         Helper to generate persistence diagrams from scratch.
 
         Args:
-            config: PipelineConfig with parameters
+            config: AnalysisConfig with parameters
 
         Returns:
             List of persistence diagrams [fid, minus_0, plus_0, ...]

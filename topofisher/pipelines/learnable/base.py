@@ -12,7 +12,7 @@ import torch.nn as nn
 from abc import abstractmethod
 from typing import List, Tuple, Dict, Any
 from ..base import BasePipeline
-from ..configs.data_types import PipelineConfig, TrainingConfig, FisherResult
+from ...config import AnalysisConfig, TrainingConfig, FisherResult
 
 class LearnablePipeline(BasePipeline):
     """
@@ -311,7 +311,7 @@ class LearnablePipeline(BasePipeline):
 
     def run(
         self,
-        config: PipelineConfig,
+        config: AnalysisConfig,
         training_config: TrainingConfig,
         data: List[torch.Tensor]
     ) -> Dict[str, Any]:

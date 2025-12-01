@@ -36,7 +36,7 @@ class LearnableCompressionPipeline(LearnablePipeline):
         Helper to generate summaries from scratch.
 
         Args:
-            config: PipelineConfig with parameters
+            config: AnalysisConfig with parameters
 
         Returns:
             List of summaries [fid, minus_0, plus_0, ...]

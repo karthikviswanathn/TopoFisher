@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from ..learnable.base import LearnablePipeline
-from ..configs.data_types import PipelineConfig
+from ...config import AnalysisConfig
 
 
 class CachedPipeline(LearnablePipeline):
@@ -20,12 +20,12 @@ class CachedPipeline(LearnablePipeline):
     different training runs.
     """
 
-    def generate_metadata(self, config: PipelineConfig) -> Dict[str, Any]:
+    def generate_metadata(self, config: AnalysisConfig) -> Dict[str, Any]:
         """
         Generate metadata dictionary from pipeline configuration.
 
         Args:
-            config: PipelineConfig containing analysis parameters
+            config: AnalysisConfig containing analysis parameters
 
         Returns:
             Dictionary containing metadata for caching
@@ -54,7 +54,7 @@ class CachedPipeline(LearnablePipeline):
         self,
         diagrams: List[List[List[torch.Tensor]]],
         save_path: str,
-        config: PipelineConfig
+        config: AnalysisConfig
     ) -> None:
         """
         Save persistence diagrams to disk with metadata.
@@ -65,7 +65,7 @@ class CachedPipeline(LearnablePipeline):
                      Each hom_dim = diagrams for one homology dimension
                      Each sample = one persistence diagram
             save_path: Path to save the diagrams
-            config: PipelineConfig containing analysis parameters
+            config: AnalysisConfig containing analysis parameters
         """
         # Convert diagrams to CPU and numpy for storage
         diagrams_np = []
@@ -148,7 +148,7 @@ class CachedPipeline(LearnablePipeline):
         self,
         summaries: List[torch.Tensor],
         save_path: str,
-        config: PipelineConfig
+        config: AnalysisConfig
     ) -> None:
         """
         Save vectorized summaries to disk with metadata.
@@ -156,7 +156,7 @@ class CachedPipeline(LearnablePipeline):
         Args:
             summaries: List of summary tensors [fid, minus_0, plus_0, ...]
             save_path: Path to save the summaries
-            config: PipelineConfig containing analysis parameters
+            config: AnalysisConfig containing analysis parameters
         """
         # Convert summaries to CPU and numpy for storage
         summaries_np = [s.cpu().numpy() for s in summaries]

@@ -6,6 +6,16 @@ used in YAML pipeline definitions.
 """
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union
+import torch
+
+
+@dataclass
+class CacheConfig:
+    """Configuration for caching diagrams and summaries."""
+    mode: str                                # "generate" or "load"
+    data_type: str                           # "diagrams" or "summaries"
+    save_path: Optional[str] = None          # Path to save (for generate mode)
+    load_path: Optional[str] = None          # Path to load from (for load mode)
 
 
 @dataclass
@@ -22,20 +32,27 @@ class AnalysisConfig:
     """
     Analysis parameters configuration.
 
-    Previously called 'fisher' in old configs, renamed for clarity.
-    These parameters control the Fisher information analysis.
+    Accepts both lists (from YAML) and tensors (programmatic use).
+    Lists are auto-converted to tensors in __post_init__.
     """
-    theta_fid: List[float]  # Fiducial parameter values
-    delta_theta: List[float]  # Step sizes for finite differences
-    n_s: int  # Number of samples for covariance estimation
-    n_d: int  # Number of samples for derivative estimation
-    seed_cov: int = 42  # Seed for fiducial samples
+    theta_fid: torch.Tensor      # Fiducial parameter values
+    delta_theta: torch.Tensor    # Step sizes for finite differences (±Δθ/2)
+    n_s: int                     # Number of samples for covariance estimation
+    n_d: int                     # Number of samples for derivative estimation
+    seed_cov: int = 42           # Seed for fiducial samples
     seed_ders: List[int] = field(default_factory=list)  # Seeds for derivative samples
+    cache: Optional[CacheConfig] = None  # Cache configuration for cached pipelines
 
     def __post_init__(self):
-        """Validate and set defaults."""
+        """Convert lists to tensors and validate."""
+        # Auto-convert lists to tensors (for YAML compatibility)
+        if not isinstance(self.theta_fid, torch.Tensor):
+            self.theta_fid = torch.tensor(self.theta_fid)
+        if not isinstance(self.delta_theta, torch.Tensor):
+            self.delta_theta = torch.tensor(self.delta_theta)
+
+        # Auto-generate derivative seeds if not provided
         if not self.seed_ders:
-            # Auto-generate derivative seeds if not provided
             n_params = len(self.theta_fid)
             self.seed_ders = [self.seed_cov + i + 1 for i in range(n_params)]
 
@@ -105,13 +122,14 @@ class PipelineYAMLConfig:
     Complete pipeline configuration from YAML.
 
     Simple data container that combines all configuration sections.
+    Simulator and filtration are optional for load mode (diagrams already cached).
     """
     experiment: ExperimentConfig
     analysis: AnalysisConfig
-    simulator: SimulatorConfig
-    filtration: FiltrationConfig
     vectorization: VectorizationConfig
     compression: CompressionConfig
+    simulator: Optional[SimulatorConfig] = None      # Optional for load mode
+    filtration: Optional[FiltrationConfig] = None    # Optional for load mode
     training: Optional[TrainingConfig] = None
 
     def is_trainable(self) -> bool:
@@ -121,7 +139,8 @@ class PipelineYAMLConfig:
         Returns:
             True if any component has trainable=True
         """
-        return (self.filtration.trainable or
+        filtration_trainable = self.filtration.trainable if self.filtration else False
+        return (filtration_trainable or
                 self.vectorization.trainable or
                 self.compression.trainable)
 
@@ -132,7 +151,7 @@ class PipelineYAMLConfig:
         Returns:
             'filtration', 'vectorization', 'compression', or None
         """
-        if self.filtration.trainable:
+        if self.filtration and self.filtration.trainable:
             return 'filtration'
         elif self.vectorization.trainable:
             return 'vectorization'
@@ -154,3 +173,32 @@ class PipelineYAMLConfig:
                 f"Training configuration required for trainable {component} component. "
                 "Please add a 'training:' section to your YAML config."
             )
+
+
+# =============================================================================
+# Pipeline Output
+# =============================================================================
+
+@dataclass
+class FisherResult:
+    """Results from Fisher information analysis."""
+    fisher_matrix: torch.Tensor      # Fisher information matrix (n_params, n_params)
+    inverse_fisher: torch.Tensor     # Covariance matrix = F^-1
+    derivatives: torch.Tensor        # Parameter derivatives (n_params, n_d, n_features)
+    covariance: torch.Tensor         # Summary covariance matrix (n_features, n_features)
+    log_det_fisher: torch.Tensor     # log|F| (scalar)
+    constraints: torch.Tensor        # 1-sigma constraints = sqrt(diag(F^-1))
+
+    # Optional diagnostic information
+    bias_error: Optional[torch.Tensor] = None
+    fractional_bias: Optional[torch.Tensor] = None
+    is_gaussian: Optional[bool] = None
+    gaussianity_details: Optional[Dict[str, Any]] = None
+
+    def print_gaussianity(self):
+        """Print Gaussianity check result."""
+        if self.is_gaussian is None:
+            print("\nGaussianity Check: Not performed")
+        else:
+            gauss_mark = "✓ PASS" if self.is_gaussian else "✗ FAIL"
+            print(f"\nGaussianity Check: {gauss_mark}")

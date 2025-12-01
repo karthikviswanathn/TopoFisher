@@ -6,6 +6,7 @@ This module provides a clean way to load and create pipelines from YAML configur
 
 # Data types
 from .data_types import (
+    CacheConfig,
     ExperimentConfig,
     AnalysisConfig,
     SimulatorConfig,
@@ -13,7 +14,8 @@ from .data_types import (
     VectorizationConfig,
     CompressionConfig,
     TrainingConfig,
-    PipelineYAMLConfig
+    PipelineYAMLConfig,
+    FisherResult,
 )
 
 # Component factory
@@ -23,7 +25,6 @@ from .component_factory import (
     create_vectorization,
     create_compression,
     create_fisher_analyzer,
-    create_pipeline_config,
     # Registries for extending
     register_simulator,
     register_filtration,
@@ -40,6 +41,7 @@ from .loader import (
 
 __all__ = [
     # Data types
+    'CacheConfig',
     'ExperimentConfig',
     'AnalysisConfig',
     'SimulatorConfig',
@@ -48,13 +50,13 @@ __all__ = [
     'CompressionConfig',
     'TrainingConfig',
     'PipelineYAMLConfig',
+    'FisherResult',
     # Factory functions
     'create_simulator',
     'create_filtration',
     'create_vectorization',
     'create_compression',
     'create_fisher_analyzer',
-    'create_pipeline_config',
     # Registry decorators
     'register_simulator',
     'register_filtration',

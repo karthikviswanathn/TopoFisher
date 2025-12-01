@@ -1,78 +1,71 @@
-"""Cached pipeline for training learnable compression."""
+"""Cached pipeline for training learnable compression from cached data."""
 
 from typing import List
 import torch
 
 from .base import CachedPipeline
 from ..learnable.compression import LearnableCompressionPipeline
-from ..configs.data_types import PipelineConfig
+from ...config import AnalysisConfig
 
 
 class CachedCompressionPipeline(CachedPipeline, LearnableCompressionPipeline):
     """
-    Cached pipeline for training compression from summaries.
+    Pipeline for training compression from cached diagrams or summaries.
 
-    This pipeline combines:
-    - LearnableCompressionPipeline: training compression from summaries
-    - CachedPipeline: saving/loading persistence diagrams and summaries to disk
+    This pipeline is used in "load" mode to:
+    1. Load cached diagrams or summaries from disk
+    2. Vectorize diagrams if needed
+    3. Train compression to maximize Fisher information
 
-    The key insight is that we only override generate_data() to return summaries
-    instead of raw data, maintaining compatibility with the existing pipeline flow.
+    Use GenerateCachePipeline first to create cached data.
     """
 
-    def generate_data(self, config: PipelineConfig) -> List[torch.Tensor]:
+    def generate_data(self, config: AnalysisConfig) -> List[torch.Tensor]:
         """
-        Override to return summaries instead of raw data.
+        Load summaries from cache instead of generating from scratch.
 
-        This is the ONLY method that needs to change! The rest of the pipeline
-        expects summaries as input for compression training.
+        This overrides the parent method to load from disk, maintaining
+        compatibility with the existing pipeline flow.
 
         Args:
-            config: PipelineConfig with cache configuration
+            config: AnalysisConfig with cache configuration
 
         Returns:
             List of summary tensors [fid, minus_0, plus_0, ...]
         """
-        # Check if cache configuration exists
         if not config.cache:
-            # No cache config, fall back to normal generation
-            raw_data = super(LearnableCompressionPipeline, self).generate_data(config)
-            diagrams = self.compute_diagrams(raw_data)
-            return self.vectorize(diagrams)
+            raise ValueError(
+                "Cache configuration required for CachedCompressionPipeline. "
+                "Set cache.mode='load' and cache.load_path in your config."
+            )
 
         cache_config = config.cache
 
-        # Load or generate based on source
-        if cache_config.source == "summaries":
-            print(f"\nLoading summaries from cache: {cache_config.source_path}")
-            summaries = self.load_summaries(cache_config.source_path)
+        if cache_config.mode != "load":
+            raise ValueError(
+                f"CachedCompressionPipeline requires mode='load', got '{cache_config.mode}'. "
+                "Use GenerateCachePipeline for mode='generate'."
+            )
 
-        elif cache_config.source == "diagrams":
-            print(f"\nLoading diagrams from cache: {cache_config.source_path}")
-            diagrams = self.load_diagrams(cache_config.source_path)
+        if not cache_config.load_path:
+            raise ValueError("load_path required for load mode")
 
-            print("Vectorizing diagrams to summaries...")
-            summaries = self.vectorize(diagrams)
+        # Load based on data_type
+        if cache_config.data_type == "summaries":
+            print(f"\nLoading summaries from: {cache_config.load_path}")
+            summaries = self.load_summaries(cache_config.load_path)
 
-        else:  # "generate"
-            print("\nGenerating data from scratch...")
-            # Use the parent's generate_data to get raw simulation data
-            raw_data = super(LearnableCompressionPipeline, self).generate_data(config)
-
-            print("Computing persistence diagrams...")
-            diagrams = self.compute_diagrams(raw_data)
-
-            # Save diagrams if requested
-            if cache_config.save_diagrams:
-                print(f"Saving diagrams to: {cache_config.save_diagrams}")
-                self.save_diagrams(diagrams, cache_config.save_diagrams, config)
+        elif cache_config.data_type == "diagrams":
+            print(f"\nLoading diagrams from: {cache_config.load_path}")
+            diagrams = self.load_diagrams(cache_config.load_path)
 
             print("Vectorizing diagrams to summaries...")
             summaries = self.vectorize(diagrams)
 
-        # Save summaries if requested
-        if cache_config.save_summaries:
-            print(f"Saving summaries to: {cache_config.save_summaries}")
-            self.save_summaries(summaries, cache_config.save_summaries, config)
+        else:
+            raise ValueError(
+                f"Unknown data_type: {cache_config.data_type}. "
+                "Use 'diagrams' or 'summaries'."
+            )
 
-        return summaries  # Return summaries, not raw data!
+        return summaries

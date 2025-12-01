@@ -13,11 +13,11 @@ import torch
 from .data_types import (
     PipelineYAMLConfig, ExperimentConfig, AnalysisConfig,
     SimulatorConfig, FiltrationConfig, VectorizationConfig,
-    CompressionConfig, TrainingConfig
+    CompressionConfig, TrainingConfig, CacheConfig
 )
 from .component_factory import (
     create_simulator, create_filtration, create_vectorization,
-    create_compression, create_fisher_analyzer, create_pipeline_config
+    create_compression, create_fisher_analyzer
 )
 
 
@@ -104,66 +104,106 @@ def load_pipeline_config(yaml_path: Union[str, Path]) -> PipelineYAMLConfig:
         raise ValueError("Missing 'analysis' section in YAML config")
 
     analysis_data = load_component_config(analysis_data, 'analysis', base_path)
+
+    # Parse cache config if present
+    cache_config = None
+    if 'cache' in analysis_data:
+        cache_data = analysis_data['cache']
+        cache_config = CacheConfig(
+            mode=cache_data['mode'],
+            data_type=cache_data['data_type'],
+            save_path=cache_data.get('save_path'),
+            load_path=cache_data.get('load_path')
+        )
+
+    # For load mode, get analysis params from cached file's metadata
+    if cache_config and cache_config.mode == "load" and cache_config.load_path:
+        import pickle
+        with open(cache_config.load_path, 'rb') as f:
+            cached_data = pickle.load(f)
+        analysis_data = cached_data.get('metadata', {})
+        print(f"Loaded analysis parameters from cache: {cache_config.load_path}")
+
     analysis_config = AnalysisConfig(
         theta_fid=analysis_data['theta_fid'],
         delta_theta=analysis_data['delta_theta'],
         n_s=analysis_data['n_s'],
         n_d=analysis_data['n_d'],
         seed_cov=analysis_data.get('seed_cov', 42),
-        seed_ders=analysis_data.get('seed_ders', [])
+        seed_ders=analysis_data.get('seed_ders', []),
+        cache=cache_config
     )
 
-    # Parse simulator config (can be file path or inline)
+    # Check cache modes to determine which components are optional
+    is_diagram_generate = (cache_config is not None and
+                           cache_config.mode == "generate" and
+                           cache_config.data_type == "diagrams")
+    is_diagram_load = (cache_config is not None and
+                       cache_config.mode == "load" and
+                       cache_config.data_type == "diagrams")
+
+    # Parse simulator config (optional for load mode)
+    simulator_config = None
     sim_data = yaml_data.get('simulator')
-    if not sim_data:
+    if sim_data:
+        sim_data = load_component_config(sim_data, 'simulator', base_path)
+        simulator_config = SimulatorConfig(
+            type=sim_data['type'],
+            params=sim_data.get('params', {})
+        )
+    elif not is_diagram_load:
         raise ValueError("Missing 'simulator' section in YAML config")
 
-    sim_data = load_component_config(sim_data, 'simulator', base_path)
-    simulator_config = SimulatorConfig(
-        type=sim_data['type'],
-        params=sim_data.get('params', {})
-    )
-
-    # Parse filtration config (can be file path or inline)
+    # Parse filtration config (optional for load mode)
+    filtration_config = None
     filt_data = yaml_data.get('filtration')
-    if not filt_data:
+    if filt_data:
+        filt_data = load_component_config(filt_data, 'filtration', base_path)
+        filtration_config = FiltrationConfig(
+            type=filt_data['type'],
+            trainable=filt_data.get('trainable', False),
+            params=filt_data.get('params', {})
+        )
+    elif not is_diagram_load:
         raise ValueError("Missing 'filtration' section in YAML config")
 
-    filt_data = load_component_config(filt_data, 'filtration', base_path)
-    filtration_config = FiltrationConfig(
-        type=filt_data['type'],
-        trainable=filt_data.get('trainable', False),
-        params=filt_data.get('params', {})
-    )
-
-    # Parse vectorization config (can be file path or inline)
+    # Parse vectorization config (optional for diagram generation)
     vec_data = yaml_data.get('vectorization')
-    if not vec_data:
+    if not vec_data and not is_diagram_generate:
         raise ValueError("Missing 'vectorization' section in YAML config")
 
-    vec_data = load_component_config(vec_data, 'vectorization', base_path)
-    vectorization_config = VectorizationConfig(
-        type=vec_data['type'],
-        trainable=vec_data.get('trainable', False),
-        params=vec_data.get('params', {})
-    )
+    if vec_data:
+        vec_data = load_component_config(vec_data, 'vectorization', base_path)
+        vectorization_config = VectorizationConfig(
+            type=vec_data['type'],
+            trainable=vec_data.get('trainable', False),
+            params=vec_data.get('params', {})
+        )
+    else:
+        # Default identity for diagram generation
+        vectorization_config = VectorizationConfig(type='identity', trainable=False, params={})
 
-    # Parse compression config (can be file path or inline)
+    # Parse compression config (optional for diagram generation)
     comp_data = yaml_data.get('compression')
-    if not comp_data:
+    if not comp_data and not is_diagram_generate:
         raise ValueError("Missing 'compression' section in YAML config")
 
-    comp_data = load_component_config(comp_data, 'compression', base_path)
-    compression_config = CompressionConfig(
-        type=comp_data['type'],
-        trainable=comp_data.get('trainable', False),
-        params=comp_data.get('params', {})
-    )
+    if comp_data:
+        comp_data = load_component_config(comp_data, 'compression', base_path)
+        compression_config = CompressionConfig(
+            type=comp_data['type'],
+            trainable=comp_data.get('trainable', False),
+            params=comp_data.get('params', {})
+        )
+    else:
+        # Default identity for diagram generation
+        compression_config = CompressionConfig(type='identity', trainable=False, params={})
 
-    # Parse training config (optional)
+    # Parse training config (optional, can be file path or inline)
     training_config = None
     if 'training' in yaml_data:
         train_data = yaml_data['training']
+        train_data = load_component_config(train_data, 'training', base_path)
         training_config = TrainingConfig(
             n_epochs=train_data.get('n_epochs', 1000),
             lr=train_data.get('lr', 1e-3),
@@ -208,14 +248,48 @@ def create_pipeline_from_config(config: PipelineYAMLConfig):
     Raises:
         ValueError: If configuration is invalid
     """
-    # Create components
-    simulator = create_simulator(config.simulator)
-    filtration = create_filtration(config.filtration)
+    # Create components (None configs result in None components)
+    simulator = create_simulator(config.simulator) if config.simulator else None
+    filtration = create_filtration(config.filtration) if config.filtration else None
     vectorization = create_vectorization(config.vectorization)
     compression = create_compression(config.compression)
     fisher_analyzer = create_fisher_analyzer(clean_data=True)
 
-    # Determine pipeline type based on trainable component
+    # Check for cache mode first - this takes priority
+    if config.analysis.cache is not None:
+        cache_mode = config.analysis.cache.mode
+
+        if cache_mode == "generate":
+            # Use GenerateCachePipeline to generate and save data
+            from ..pipelines.cached import GenerateCachePipeline
+
+            pipeline = GenerateCachePipeline(
+                simulator=simulator,
+                filtration=filtration,
+                vectorization=vectorization,
+                compression=compression,
+                fisher_analyzer=fisher_analyzer
+            )
+            return pipeline, config
+
+        elif cache_mode == "load":
+            # Use CachedCompressionPipeline to load and train
+            # simulator and filtration can be None (diagrams already cached)
+            from ..pipelines.cached import CachedCompressionPipeline
+
+            pipeline = CachedCompressionPipeline(
+                simulator=None,
+                filtration=None,
+                vectorization=vectorization,
+                compression=compression,
+                fisher_analyzer=fisher_analyzer
+            )
+            return pipeline, config
+
+        else:
+            raise ValueError(f"Unknown cache mode: {cache_mode}. Use 'generate' or 'load'.")
+
+    # No cache - determine pipeline type based on trainable component
     if not config.is_trainable():
         # Use base pipeline for non-trainable configurations
         from ..pipelines import BasePipeline

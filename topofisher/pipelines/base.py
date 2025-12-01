@@ -7,7 +7,7 @@ from typing import List
 import torch
 import torch.nn as nn
 
-from .configs.data_types import PipelineConfig, FisherResult
+from ..config import AnalysisConfig, FisherResult
 
 class BasePipeline(nn.Module):
     """
@@ -57,7 +57,7 @@ class BasePipeline(nn.Module):
         if hasattr(self.simulator, 'device'):
             self.simulator.device = self.device
 
-    def generate_data(self, config: PipelineConfig) -> List[torch.Tensor]:
+    def generate_data(self, config: AnalysisConfig) -> List[torch.Tensor]:
         """
         Generate raw data at fiducial and perturbed parameter values.
 
@@ -188,7 +188,7 @@ class BasePipeline(nn.Module):
         """
         return self.fisher_analyzer(compressed_summaries, delta_theta, check_gaussianity=check_gaussianity)
 
-    def forward(self, config: PipelineConfig) -> FisherResult:
+    def forward(self, config: AnalysisConfig) -> FisherResult:
         """
         Run full pipeline: simulator → filtration → vectorization → compression → fisher.
 
