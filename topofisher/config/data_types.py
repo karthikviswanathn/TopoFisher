@@ -111,9 +111,10 @@ class TrainingConfig:
     val_frac: float = 0.25
     validate_every: int = 10
     verbose: bool = True
-    check_gaussianity: bool = True
     patience: Optional[int] = None  # Early stopping patience
     min_delta: float = 1e-6  # Minimum improvement for early stopping
+    lambda_k: float = 0.0  # Kurtosis regularization strength (0 = disabled)
+    lambda_s: float = 0.0  # Skewness regularization strength (0 = disabled)
 
 
 @dataclass
@@ -194,6 +195,10 @@ class FisherResult:
     fractional_bias: Optional[torch.Tensor] = None
     is_gaussian: Optional[bool] = None
     gaussianity_details: Optional[Dict[str, Any]] = None
+
+    # Gaussianity regularization penalties (computed when compute_moments=True)
+    skewness_penalty: Optional[torch.Tensor] = None   # Mean squared skewness
+    kurtosis_penalty: Optional[torch.Tensor] = None   # Mean squared excess kurtosis
 
     def print_gaussianity(self):
         """Print Gaussianity check result."""

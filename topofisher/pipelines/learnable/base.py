@@ -112,10 +112,11 @@ class LearnablePipeline(BasePipeline):
         self,
         data: List[torch.Tensor],
         delta_theta: torch.Tensor,
-        check_gaussianity: bool = False
+        check_gaussianity: bool = False,
+        compute_moments: bool = False
     ):
         """
-        Compute Fisher result with optional Gaussianity check.
+        Compute Fisher result with optional Gaussianity check and moment penalties.
 
         This method eliminates redundancy by centralizing the Fisher computation
         and Gaussianity checking logic. Subclasses only need to implement
@@ -125,15 +126,21 @@ class LearnablePipeline(BasePipeline):
             data: Input data
             delta_theta: Parameter step sizes
             check_gaussianity: If True, also check Gaussianity
+            compute_moments: If True, compute skewness/kurtosis penalties
 
         Returns:
-            FisherResult with fisher_matrix, constraints, log_det_fisher, is_gaussian
+            FisherResult with fisher_matrix, constraints, log_det_fisher, is_gaussian,
+            and optionally skewness_penalty/kurtosis_penalty
         """
         # Get compressed summaries (subclass-specific implementation)
         compressed = self._compute_summaries(data)
 
-        # Compute Fisher result (with optional Gaussianity check)
-        fisher_result = self.fisher_analyzer(compressed, delta_theta, check_gaussianity=check_gaussianity)
+        # Compute Fisher result (with optional Gaussianity check and moments)
+        fisher_result = self.fisher_analyzer(
+            compressed, delta_theta,
+            check_gaussianity=check_gaussianity,
+            compute_moments=compute_moments
+        )
 
         return fisher_result
 
@@ -187,7 +194,7 @@ class LearnablePipeline(BasePipeline):
         # Training state
         train_losses = []
         val_losses = []
-        best_val_loss = float('inf')
+        best_val_loss = float('inf')    # Track best loss among saved (Gaussian) models
         best_model_state = None
         best_epoch = 0
 
@@ -207,8 +214,18 @@ class LearnablePipeline(BasePipeline):
             batch_data = self._extract_batch(train_data, idx)
 
             # Forward pass: compute Fisher result and extract loss
-            fisher_result = self.compute_fisher_result(batch_data, delta_theta, check_gaussianity=False)
+            fisher_result = self.compute_fisher_result(
+                batch_data, delta_theta,
+                check_gaussianity=False,
+                compute_moments=True
+            )
             loss = -fisher_result.log_det_fisher
+
+            # Add Gaussianity regularization if enabled
+            if training_config.lambda_s > 0:
+                loss = loss + training_config.lambda_s * fisher_result.skewness_penalty
+            if training_config.lambda_k > 0:
+                loss = loss + training_config.lambda_k * fisher_result.kurtosis_penalty
 
             # Backward pass
             optimizer.zero_grad()
@@ -228,9 +245,10 @@ class LearnablePipeline(BasePipeline):
 
                 # Check validation conditions
                 is_best_loss = val_loss.item() < best_val_loss
-                is_gaussian = val_result.is_gaussian 
+                is_gaussian = val_result.is_gaussian
 
                 # Save best model (both conditions must pass)
+                # best_val_loss tracks best among Gaussian-passing models
                 if is_best_loss and is_gaussian:
                     best_val_loss = val_loss.item()
                     best_epoch = epoch + 1

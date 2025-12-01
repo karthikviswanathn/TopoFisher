@@ -31,18 +31,21 @@ class LearnableCompressionPipeline(LearnablePipeline):
         compressed = self.compression(data)
         return compressed
 
-    def generate_summaries(self, config):
+    def generate_data(self, config):
         """
-        Helper to generate summaries from scratch.
+        Generate vectorized summaries for compression training.
+
+        Overrides parent to return vectorized summaries instead of raw data,
+        ensuring compression trains on topological features, not raw fields.
 
         Args:
             config: AnalysisConfig with parameters
 
         Returns:
-            List of summaries [fid, minus_0, plus_0, ...]
+            List of vectorized summaries [fid, minus_0, plus_0, ...]
         """
-        # Generate raw data
-        all_data = self.generate_data(config)
+        # Generate raw data using parent's method
+        all_data = super().generate_data(config)
 
         # Compute persistence diagrams
         all_diagrams = self.compute_diagrams(all_data)

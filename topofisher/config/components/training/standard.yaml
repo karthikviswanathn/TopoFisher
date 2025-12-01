@@ -6,6 +6,7 @@ train_frac: 0.5
 val_frac: 0.25
 validate_every: 10
 verbose: true
-check_gaussianity: true
 patience: 50
 min_delta: 1.0e-6
+lambda_k: 0.0  # Kurtosis regularization (0 = disabled)
+lambda_s: 0.0  # Skewness regularization (0 = disabled)

@@ -23,6 +23,5 @@ training:
   val_frac: 0.25
   validate_every: 10
   verbose: true
-  check_gaussianity: true
   patience: 50
   min_delta: 1.0e-6

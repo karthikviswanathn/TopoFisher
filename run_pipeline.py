@@ -69,6 +69,12 @@ def main():
                         help='Override learning rate from config')
     parser.add_argument('--output-dir', type=str, default=None,
                         help='Override output directory from config')
+    parser.add_argument('--lambda-k', type=float, default=None,
+                        help='Override kurtosis regularization strength')
+    parser.add_argument('--lambda-s', type=float, default=None,
+                        help='Override skewness regularization strength')
+    parser.add_argument('--n-epochs', type=int, default=None,
+                        help='Override number of training epochs')
 
     args = parser.parse_args()
 
@@ -91,6 +97,18 @@ def main():
     if args.output_dir is not None:
         print(f"Overriding output directory: {config.experiment.output_dir} → {args.output_dir}")
         config.experiment.output_dir = args.output_dir
+
+    if args.lambda_k is not None and config.training is not None:
+        print(f"Overriding lambda_k: {config.training.lambda_k} → {args.lambda_k}")
+        config.training.lambda_k = args.lambda_k
+
+    if args.lambda_s is not None and config.training is not None:
+        print(f"Overriding lambda_s: {config.training.lambda_s} → {args.lambda_s}")
+        config.training.lambda_s = args.lambda_s
+
+    if args.n_epochs is not None and config.training is not None:
+        print(f"Overriding n_epochs: {config.training.n_epochs} → {args.n_epochs}")
+        config.training.n_epochs = args.n_epochs
 
     # Print configuration summary
     print(f"\nExperiment: {config.experiment.name}")
@@ -250,6 +268,7 @@ def main():
             'fisher_matrix': result.fisher_matrix.cpu().tolist(),
             'log_det_fisher': result.log_det_fisher.cpu().item(),
             'constraints': result.constraints.cpu().tolist(),
+            'is_gaussian': result.is_gaussian,
             'analysis': {
                 'theta_fid': config.analysis.theta_fid.tolist(),
                 'delta_theta': config.analysis.delta_theta.tolist(),

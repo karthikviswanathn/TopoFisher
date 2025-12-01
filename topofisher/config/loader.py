@@ -213,9 +213,10 @@ def load_pipeline_config(yaml_path: Union[str, Path]) -> PipelineYAMLConfig:
             val_frac=train_data.get('val_frac', 0.25),
             validate_every=train_data.get('validate_every', 10),
             verbose=train_data.get('verbose', True),
-            check_gaussianity=train_data.get('check_gaussianity', True),
             patience=train_data.get('patience'),
-            min_delta=train_data.get('min_delta', 1e-6)
+            min_delta=train_data.get('min_delta', 1e-6),
+            lambda_k=train_data.get('lambda_k', 0.0),
+            lambda_s=train_data.get('lambda_s', 0.0)
         )
 
     # Create and validate config

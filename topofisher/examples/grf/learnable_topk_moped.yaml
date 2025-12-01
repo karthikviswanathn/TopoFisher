@@ -30,4 +30,3 @@ training:
   val_frac: 0.0625
   validate_every: 10
   verbose: true
-  check_gaussianity: true  # Ensure features remain Gaussian

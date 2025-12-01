@@ -1,7 +1,7 @@
 """
 Fisher information analysis.
 """
-from typing import List
+from typing import List, Tuple
 import torch
 import torch.nn as nn
 from ..config import FisherResult
@@ -34,7 +34,8 @@ class FisherAnalyzer(nn.Module):
         self,
         summaries: List[torch.Tensor],
         delta_theta: torch.Tensor,
-        check_gaussianity: bool = False
+        check_gaussianity: bool = False,
+        compute_moments: bool = False
     ) -> FisherResult:
         """
         Compute Fisher information from summaries.
@@ -46,6 +47,7 @@ class FisherAnalyzer(nn.Module):
                     Ordered as [..., theta_minus_i, theta_plus_i, ...]
             delta_theta: Tensor of shape (n_params,) with step sizes
             check_gaussianity: If True, run Gaussianity test on summaries
+            compute_moments: If True, compute skewness/kurtosis penalties for regularization
 
         Returns:
             FisherResult containing Fisher matrix and related quantities
@@ -63,6 +65,12 @@ class FisherAnalyzer(nn.Module):
         if check_gaussianity:
             _, is_gaussian = test_gaussianity(summaries, verbose=False)
 
+        # Compute moment penalties for regularization
+        skewness_penalty = None
+        kurtosis_penalty = None
+        if compute_moments:
+            skewness_penalty, kurtosis_penalty = self.compute_gaussianity_penalty(summaries)
+
         return FisherResult(
             fisher_matrix=fisher_matrix,
             inverse_fisher=inv_fisher,
@@ -70,7 +78,9 @@ class FisherAnalyzer(nn.Module):
             covariance=C,
             log_det_fisher=log_det_fisher,
             constraints=constraints,
-            is_gaussian=is_gaussian
+            is_gaussian=is_gaussian,
+            skewness_penalty=skewness_penalty,
+            kurtosis_penalty=kurtosis_penalty
         )
 
     def _compute_fisher(
@@ -191,3 +201,42 @@ class FisherAnalyzer(nn.Module):
             derivatives.append(deriv)
 
         return torch.stack(derivatives)  # (n_params, n_d, n_features)
+
+    def compute_gaussianity_penalty(
+        self,
+        summaries: List[torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute skewness and kurtosis penalties for Gaussianity regularization.
+
+        - Skewness: E[(X - μ)³] / σ³ (should be 0 for Gaussian)
+        - Excess kurtosis: E[(X - μ)⁴] / σ⁴ - 3 (should be 0 for Gaussian)
+
+        Args:
+            summaries: List of summary tensors [fid, minus_0, plus_0, ...]
+                Each tensor shape: (n_samples, n_features)
+
+        Returns:
+            (skewness_penalty, kurtosis_penalty): Mean of squared deviations
+        """
+        skew_penalty = torch.tensor(0.0, device=summaries[0].device)
+        kurt_penalty = torch.tensor(0.0, device=summaries[0].device)
+        n_summaries = 0
+
+        for s in summaries:
+            # Standardize to mean=0, std=1
+            mean = s.mean(dim=0, keepdim=True)
+            std = s.std(dim=0, keepdim=True) + 1e-8
+            s_norm = (s - mean) / std
+
+            # Skewness: E[(X - μ)^3] / σ^3
+            skewness = torch.mean(s_norm ** 3, dim=0)
+            skew_penalty = skew_penalty + torch.mean(skewness ** 2)
+
+            # Excess kurtosis: E[(X - μ)^4] / σ^4 - 3
+            kurtosis = torch.mean(s_norm ** 4, dim=0) - 3.0
+            kurt_penalty = kurt_penalty + torch.mean(kurtosis ** 2)
+
+            n_summaries += 1
+
+        return skew_penalty / n_summaries, kurt_penalty / n_summaries
