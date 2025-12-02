@@ -239,6 +239,9 @@ class LearnablePipeline(BasePipeline):
                 self.eval()  # Set entire pipeline to eval mode
                 with torch.no_grad():
                     val_result = self.compute_fisher_result(val_data, delta_theta, check_gaussianity=True)
+                    # Note: val_loss is pure -log|F|, does NOT include regularization terms
+                    # (lambda_k * kurtosis + lambda_s * skewness). This ensures we select
+                    # models based on Fisher information, not regularization strength.
                     val_loss = -val_result.log_det_fisher
 
                 val_losses.append(val_loss.item())
