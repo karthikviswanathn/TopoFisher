@@ -72,6 +72,9 @@ class TopKBaseLayer(nn.Module):
         # Update n_features now that k is determined
         self.n_features = self.k * 2
 
+        # # Mark k as provided so subsequent fit() calls don't override it
+        # self.k_provided = True
+
     def _validate_k(self):
         """Check if k is set before using it."""
         if self.k is None:

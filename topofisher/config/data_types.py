@@ -200,10 +200,20 @@ class FisherResult:
     skewness_penalty: Optional[torch.Tensor] = None   # Mean squared skewness
     kurtosis_penalty: Optional[torch.Tensor] = None   # Mean squared excess kurtosis
 
-    def print_gaussianity(self):
-        """Print Gaussianity check result."""
+    def print_gaussianity(self, print_details: bool = False):
+        """Print Gaussianity check result.
+
+        Args:
+            print_details: If True, print detailed test statistics.
+        """
         if self.is_gaussian is None:
             print("\nGaussianity Check: Not performed")
         else:
             gauss_mark = "✓ PASS" if self.is_gaussian else "✗ FAIL"
             print(f"\nGaussianity Check: {gauss_mark}")
+
+            if print_details:
+                d = self.gaussianity_details
+                print(f"  Test: {d.get('test', 'unknown')} (α={d.get('alpha', 0.05)})")
+                print(f"  Datasets: {d.get('n_datasets_all_gaussian', '?')}/{d.get('n_datasets', '?')} all Gaussian")
+                print(f"  Features: {d.get('total_passed', '?')}/{d.get('total_tests', '?')} tests passed")

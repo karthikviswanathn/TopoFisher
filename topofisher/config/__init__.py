@@ -36,7 +36,8 @@ from .component_factory import (
 from .loader import (
     load_pipeline_config,
     create_pipeline_from_config,
-    load_and_create_pipeline
+    load_and_create_pipeline,
+    load_pipeline_checkpoint
 )
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     'load_pipeline_config',
     'create_pipeline_from_config',
     'load_and_create_pipeline',
+    'load_pipeline_checkpoint',
 ]

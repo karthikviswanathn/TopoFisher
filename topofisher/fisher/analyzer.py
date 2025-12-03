@@ -62,8 +62,22 @@ class FisherAnalyzer(nn.Module):
 
         # Gaussianity check
         is_gaussian = None
+        gaussianity_details = None
         if check_gaussianity:
-            _, is_gaussian = test_gaussianity(summaries, verbose=False)
+            results, is_gaussian = test_gaussianity(summaries, verbose=False)
+            # Compute summary statistics for details
+            n_datasets = len(results)
+            n_datasets_all_gaussian = sum(1 for r in results.values() if r['all_gaussian'])
+            total_tests = sum(r['n_total'] for r in results.values())
+            total_passed = sum(r['n_gaussian'] for r in results.values())
+            gaussianity_details = {
+                'n_datasets': n_datasets,
+                'n_datasets_all_gaussian': n_datasets_all_gaussian,
+                'total_tests': total_tests,
+                'total_passed': total_passed,
+                'alpha': 0.05,
+                'test': 'Kolmogorov-Smirnov'
+            }
 
         # Compute moment penalties for regularization
         skewness_penalty = None
@@ -79,6 +93,7 @@ class FisherAnalyzer(nn.Module):
             log_det_fisher=log_det_fisher,
             constraints=constraints,
             is_gaussian=is_gaussian,
+            gaussianity_details=gaussianity_details,
             skewness_penalty=skewness_penalty,
             kurtosis_penalty=kurtosis_penalty
         )

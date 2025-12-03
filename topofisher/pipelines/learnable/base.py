@@ -7,6 +7,7 @@ This would enable end-to-end optimization and better gradient flow through
 all components.
 """
 
+import copy
 import torch
 import torch.nn as nn
 from abc import abstractmethod
@@ -247,17 +248,17 @@ class LearnablePipeline(BasePipeline):
                 val_losses.append(val_loss.item())
 
                 # Check validation conditions
+                # Note: is_best_loss compares against best_val_loss, which is only
+                # updated when Gaussianity passes. So if Gaussianity never passes,
+                # best_val_loss stays at infinity and is_best_loss is always True.
                 is_best_loss = val_loss.item() < best_val_loss
                 is_gaussian = val_result.is_gaussian
 
                 # Save best model (both conditions must pass)
-                # best_val_loss tracks best among Gaussian-passing models
                 if is_best_loss and is_gaussian:
                     best_val_loss = val_loss.item()
                     best_epoch = epoch + 1
-                    best_model_state = {
-                        k: v.clone() for k, v in self.state_dict().items()
-                    }
+                    best_model_state = copy.deepcopy(self.state_dict())
 
                     if training_config.verbose:
                         print(f"  Epoch {epoch+1}/{training_config.n_epochs}: "

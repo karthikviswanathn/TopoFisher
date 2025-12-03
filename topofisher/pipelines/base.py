@@ -188,6 +188,34 @@ class BasePipeline(nn.Module):
         """
         return self.fisher_analyzer(compressed_summaries, delta_theta, check_gaussianity=check_gaussianity)
 
+    def state_dict(self):
+        """
+        Return state dict of all nn.Module components (PyTorch style).
+
+        Returns nested dict: {component_name: component_state_dict}
+        Only includes filtration, vectorization, compression if they are nn.Module.
+        """
+        state = {}
+        for name in ['filtration', 'vectorization', 'compression']:
+            component = getattr(self, name, None)
+            if component is not None and isinstance(component, nn.Module):
+                state[name] = component.state_dict()
+        return state
+
+    def load_state_dict(self, state_dict, strict=True):
+        """
+        Load state dict into nn.Module components (PyTorch style).
+
+        Args:
+            state_dict: Dict mapping component name to state_dict
+            strict: If True, raise error for missing/unexpected keys
+        """
+        for name, state in state_dict.items():
+            if state is not None:
+                component = getattr(self, name, None)
+                if component is not None and isinstance(component, nn.Module):
+                    component.load_state_dict(state, strict=strict)
+
     def forward(self, config: AnalysisConfig) -> FisherResult:
         """
         Run full pipeline: simulator → filtration → vectorization → compression → fisher.

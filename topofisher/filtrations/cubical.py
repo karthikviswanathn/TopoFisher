@@ -47,6 +47,13 @@ class CubicalLayer(nn.Module):
         else:
             return f"CubicalLayer(homology_dimensions={self.dimensions}, min_persistence={self.min_persistence})"
 
+    def get_config(self) -> dict:
+        """Return configuration dictionary for serialization."""
+        return {
+            'homology_dimensions': self.dimensions,
+            'min_persistence': self.min_persistence,
+        }
+
     def forward(self, X: torch.Tensor) -> List[List[torch.Tensor]]:
         """
         Compute persistence diagrams from cubical complex.

@@ -55,6 +55,16 @@ class GRFSimulator(Simulator):
         return (f"GRFSimulator(N={self.N}, dim={self.dim}, "
                 f"boxlength={self.boxlength}, device='{self.device}')")
 
+    def get_config(self) -> dict:
+        """Return configuration dictionary for serialization."""
+        return {
+            'N': self.N,
+            'dim': self.dim,
+            'boxlength': self.boxlength,
+            'ensure_physical': self.ensure_physical,
+            'vol_normalised_power': self.vol_normalised_power,
+        }
+
     def generate(
         self,
         theta: torch.Tensor,

@@ -19,8 +19,11 @@ from pathlib import Path
 import torch
 import numpy as np
 import yaml
-
+import pickle
 from topofisher.config import load_pipeline_config, create_pipeline_from_config
+from topofisher.config import create_simulator, create_filtration, SimulatorConfig, FiltrationConfig
+from topofisher.pipelines import BasePipeline
+from topofisher.pipelines.cached import CachedCompressionPipeline
 
 
 def extract_expanded_config(config, pipeline):
@@ -286,7 +289,50 @@ def main():
         # Save Fisher matrix as numpy (move to CPU first)
         np.save(output_dir / 'fisher_matrix.npy', result.fisher_matrix.detach().cpu().numpy())
 
+        # Save pipeline checkpoint (entire pipeline object to preserve hyperparameters)
+        # This saves everything including auto-selected values (e.g., TopK k values)
+        #
+        # Convert CachedCompressionPipeline to BasePipeline for inference portability.
+        # CachedCompressionPipeline requires cache config, but BasePipeline can run
+        # with fresh data (new seeds) using any simulator.
+        if isinstance(pipeline, CachedCompressionPipeline):
+            # Load metadata from cache file to get simulator/filtration config
+            cache_path = config.analysis.cache.load_path
+            with open(cache_path, 'rb') as f:
+                cached_data = pickle.load(f)
+            metadata = cached_data.get('metadata', {})
+
+            # Create simulator from cached metadata
+            sim_meta = metadata.get('simulator', {})
+            sim_type = sim_meta['type'].lower().replace('simulator', '')
+            sim_params = sim_meta.get('params', {})
+            simulator = create_simulator(SimulatorConfig(type=sim_type, params=sim_params))
+
+            # Create filtration from cached metadata
+            filt_meta = metadata.get('filtration', {})
+            filt_type = filt_meta['type'].lower().replace('layer', '')
+            filt_params = filt_meta.get('params', {})
+            filtration = create_filtration(FiltrationConfig(type=filt_type, trainable=False, params=filt_params))
+
+            inference_pipeline = BasePipeline(
+                simulator=simulator,
+                filtration=filtration,
+                vectorization=pipeline.vectorization,
+                compression=pipeline.compression,
+                fisher_analyzer=pipeline.fisher_analyzer
+            )
+            print(f"  Converted CachedCompressionPipeline → BasePipeline for inference")
+        else:
+            inference_pipeline = pipeline
+
+        checkpoint = {
+            'config': config,              # Keep for reference
+            'pipeline': inference_pipeline # Save as BasePipeline
+        }
+        torch.save(checkpoint, output_dir / 'pipeline.pt')
+
         print(f"\nResults saved to: {output_dir}")
+        print(f"  - config.yaml, results.json, fisher_matrix.npy, pipeline.pt")
 
     print(f"\n{'='*60}")
     print("Pipeline completed successfully!")

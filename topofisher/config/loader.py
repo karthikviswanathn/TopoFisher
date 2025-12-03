@@ -358,3 +358,27 @@ def load_and_create_pipeline(yaml_path: Union[str, Path]):
     """
     config = load_pipeline_config(yaml_path)
     return create_pipeline_from_config(config)
+
+
+def load_pipeline_checkpoint(checkpoint_path: Union[str, Path]):
+    """
+    Load a complete pipeline from a checkpoint file (PyTorch style).
+
+    Contains entire pickled pipeline object
+    - Preserves all hyperparameters including auto-selected values (e.g., TopK k)
+    - Structure: {'config': PipelineYAMLConfig, 'pipeline': Pipeline}
+    Args:
+        checkpoint_path: Path to pipeline.pt checkpoint file
+
+    Returns:
+        Tuple of (pipeline, config)
+
+    Example:
+        >>> pipeline, config = load_pipeline_checkpoint('output/pipeline.pt')
+        >>> result = pipeline(config.analysis)  
+    """
+    # weights_only=False needed to unpickle pipeline object and config dataclass
+    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    pipeline = checkpoint['pipeline']
+    config = checkpoint.get('config')
+    return pipeline, config

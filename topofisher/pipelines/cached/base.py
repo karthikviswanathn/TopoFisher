@@ -41,11 +41,17 @@ class CachedPipeline(LearnablePipeline):
         }
 
         # Add component information if available
-        if hasattr(self.simulator, '__class__'):
-            metadata['simulator'] = self.simulator.__class__.__name__
-        if hasattr(self.filtration, '__class__'):
-            metadata['filtration'] = self.filtration.__class__.__name__
-        if hasattr(self.vectorization, '__class__'):
+        if self.simulator is not None:
+            metadata['simulator'] = {
+                'type': self.simulator.__class__.__name__,
+                'params': getattr(self.simulator, 'get_config', lambda: {})()
+            }
+        if self.filtration is not None:
+            metadata['filtration'] = {
+                'type': self.filtration.__class__.__name__,
+                'params': getattr(self.filtration, 'get_config', lambda: {})()
+            }
+        if self.vectorization is not None:
             metadata['vectorization'] = self.vectorization.__class__.__name__
 
         return metadata
