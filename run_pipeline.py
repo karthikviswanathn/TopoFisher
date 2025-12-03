@@ -78,6 +78,10 @@ def main():
                         help='Override skewness regularization strength')
     parser.add_argument('--n-epochs', type=int, default=None,
                         help='Override number of training epochs')
+    parser.add_argument('--alpha-k', type=int, default=None,
+                        help='Override k (nearest neighbors) for filtration')
+    parser.add_argument('--hidden-dims', type=str, default=None,
+                        help='Override hidden_dims for filtration (JSON list, e.g., "[20, 10]")')
 
     args = parser.parse_args()
 
@@ -112,6 +116,16 @@ def main():
     if args.n_epochs is not None and config.training is not None:
         print(f"Overriding n_epochs: {config.training.n_epochs} → {args.n_epochs}")
         config.training.n_epochs = args.n_epochs
+
+    # Filtration parameter overrides
+    if args.alpha_k is not None and config.filtration is not None:
+        print(f"Overriding filtration k: {config.filtration.params.get('k', 'N/A')} → {args.alpha_k}")
+        config.filtration.params['k'] = args.alpha_k
+
+    if args.hidden_dims is not None and config.filtration is not None:
+        hidden_dims = json.loads(args.hidden_dims)
+        print(f"Overriding filtration hidden_dims: {config.filtration.params.get('hidden_dims', 'N/A')} → {hidden_dims}")
+        config.filtration.params['hidden_dims'] = hidden_dims
 
     # Print configuration summary
     print(f"\nExperiment: {config.experiment.name}")

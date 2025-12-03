@@ -1,0 +1,45 @@
+# Learnable Flag Complex Filtration on Noisy Ring
+#
+# This config trains a neural network to learn optimal vertex filtration values
+# for the noisy ring point cloud data.
+#
+# Pipeline:
+#   NoisyRingSimulator → LearnablePointFiltration → TopK → MOPED → Fisher
+#
+# Usage:
+#   python run_pipeline.py topofisher/examples/circle/learnable_flag.yaml --train
+
+simulator: simulators/noisy_ring.yaml
+
+filtration: 
+  type: learnable_point
+  trainable: true  # Must be true for learnable filtration
+  params:
+    k: 10                      # Number of nearest neighbors
+    hidden_dims: [20, 10]          # Hidden layer dimensions (list), [] for linear
+    dropout: 0.0               # Dropout probability
+    homology_dimensions: [0, 1]
+    complex_type: alpha        # 'alpha' or 'rips'
+    p: 1.0                     # Edge filtration: (d^p + fmax^p)^(1/p)
+
+vectorization: vectorizations/topk_auto.yaml  # Auto-k selection
+
+compression: compressions/moped.yaml  # Analytical MOPED compression
+
+analysis:
+  theta_fid: [1.0, 0.2]       # [radius_mean, radius_std]
+  delta_theta: [0.05, 0.01]   # Finite difference step sizes
+  n_s: 40000                  # Samples for covariance
+  n_d: 40000                  # Samples for derivatives
+  seed_cov: 42
+  seed_ders: [43, 44]
+
+training:
+  n_epochs: 500
+  lr: 0.001
+  batch_size: 200
+  weight_decay: 0.0001
+  train_frac: 0.875
+  val_frac: 0.0625
+  validate_every: 10
+  verbose: true

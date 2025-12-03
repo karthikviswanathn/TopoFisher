@@ -82,6 +82,19 @@ def create_gaussian_vector_simulator(params: Dict[str, Any]):
     return GaussianVectorSimulator(**params)
 
 
+@register_simulator('noisy_ring')
+def create_noisy_ring_simulator(params: Dict[str, Any]):
+    """Create Noisy Ring (Circle) simulator for point clouds."""
+    from ..simulators import NoisyRingSimulator
+
+    # Auto-detect device if not specified
+    if 'device' not in params:
+        params['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Auto-detected device: {params['device']}")
+
+    return NoisyRingSimulator(**params)
+
+
 # ============================================================================
 # Filtration Factories
 # ============================================================================
@@ -120,6 +133,15 @@ def create_learnable_filtration(params: Dict[str, Any], trainable: bool = False)
     if not trainable:
         print("Warning: 'learnable' filtration type but trainable=false. Setting trainable=true.")
     return LearnableFiltration(**params)
+
+
+@register_filtration('learnable_point')
+def create_learnable_point_filtration(params: Dict[str, Any], trainable: bool = False):
+    """Create Learnable Point (Flag Complex) filtration for point clouds."""
+    from ..filtrations import LearnablePointFiltration
+    if not trainable:
+        print("Warning: 'learnable_point' filtration type but trainable=false. Setting trainable=true.")
+    return LearnablePointFiltration(**params)
 
 
 # ============================================================================

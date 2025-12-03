@@ -50,9 +50,11 @@ class Simulator(ABC):
 # Import concrete implementations
 from .grf import GRFSimulator
 from .gaussian_vector import GaussianVectorSimulator
+from .noisy_ring import NoisyRingSimulator
 
 __all__ = [
     'Simulator',
     'GRFSimulator',
     'GaussianVectorSimulator',
+    'NoisyRingSimulator',
 ]
