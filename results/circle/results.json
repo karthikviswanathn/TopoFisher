@@ -1,0 +1,266 @@
+{
+  "theoretical": {
+    "fisher_matrix": [
+      [
+        2133.866455078125,
+        -1.3551575648307335e-05
+      ],
+      [
+        -1.3513152225641534e-05,
+        3472.3671875
+      ]
+    ],
+    "log_det_fisher": 15.818283081054688,
+    "constraints": [
+      0.021647930145263672,
+      0.016970209777355194
+    ]
+  },
+  "dtm": {
+    "10": {
+      "experiment": "unnamed_experiment",
+      "fisher_matrix": [
+        [
+          843.6192626953125,
+          519.9042358398438
+        ],
+        [
+          519.9041748046875,
+          2009.3275146484375
+        ]
+      ],
+      "log_det_fisher": 14.169546127319336,
+      "constraints": [
+        0.03755323588848114,
+        0.02433297596871853
+      ],
+      "is_gaussian": true,
+      "analysis": {
+        "theta_fid": [
+          1.0,
+          0.20000000298023224
+        ],
+        "delta_theta": [
+          0.05000000074505806,
+          0.009999999776482582
+        ],
+        "n_s": 10000,
+        "n_d": 10000
+      },
+      "metadata": {
+        "components": {
+          "simulator": "<topofisher.simulators.noisy_ring.NoisyRingSimulator object at 0x146ae850cdd0>",
+          "filtration": "AlphaDTMFiltration()",
+          "vectorization": "CombinedVectorization(layers=[TopKLayer(k=103 (auto-selected), pad_value=0.0), TopKLayer(k=6 (auto-selected), pad_value=0.0)])",
+          "compression": "MOPEDCompression(train_frac=0.5, clean_data=True, reg=1e-08)",
+          "fisher_analyzer": "FisherAnalyzer(clean_data=True)"
+        }
+      }
+    },
+    "20": {
+      "experiment": "unnamed_experiment",
+      "fisher_matrix": [
+        [
+          1117.7425537109375,
+          621.6539306640625
+        ],
+        [
+          621.6539306640625,
+          1882.00390625
+        ]
+      ],
+      "log_det_fisher": 14.356170654296875,
+      "constraints": [
+        0.03310603275895119,
+        0.025513365864753723
+      ],
+      "is_gaussian": true,
+      "analysis": {
+        "theta_fid": [
+          1.0,
+          0.20000000298023224
+        ],
+        "delta_theta": [
+          0.05000000074505806,
+          0.009999999776482582
+        ],
+        "n_s": 10000,
+        "n_d": 10000
+      },
+      "metadata": {
+        "components": {
+          "simulator": "<topofisher.simulators.noisy_ring.NoisyRingSimulator object at 0x150dc8b57d10>",
+          "filtration": "AlphaDTMFiltration()",
+          "vectorization": "CombinedVectorization(layers=[TopKLayer(k=103 (auto-selected), pad_value=0.0), TopKLayer(k=6 (auto-selected), pad_value=0.0)])",
+          "compression": "MOPEDCompression(train_frac=0.5, clean_data=True, reg=1e-08)",
+          "fisher_analyzer": "FisherAnalyzer(clean_data=True)"
+        }
+      }
+    },
+    "40": {
+      "experiment": "unnamed_experiment",
+      "fisher_matrix": [
+        [
+          1422.824951171875,
+          413.32342529296875
+        ],
+        [
+          413.32342529296875,
+          1381.0335693359375
+        ]
+      ],
+      "log_det_fisher": 14.400031089782715,
+      "constraints": [
+        0.027744367718696594,
+        0.028161024674773216
+      ],
+      "is_gaussian": true,
+      "analysis": {
+        "theta_fid": [
+          1.0,
+          0.20000000298023224
+        ],
+        "delta_theta": [
+          0.05000000074505806,
+          0.009999999776482582
+        ],
+        "n_s": 10000,
+        "n_d": 10000
+      },
+      "metadata": {
+        "components": {
+          "simulator": "<topofisher.simulators.noisy_ring.NoisyRingSimulator object at 0x14e51fe11c50>",
+          "filtration": "AlphaDTMFiltration()",
+          "vectorization": "CombinedVectorization(layers=[TopKLayer(k=103 (auto-selected), pad_value=0.0), TopKLayer(k=7 (auto-selected), pad_value=0.0)])",
+          "compression": "MOPEDCompression(train_frac=0.5, clean_data=True, reg=1e-08)",
+          "fisher_analyzer": "FisherAnalyzer(clean_data=True)"
+        }
+      }
+    }
+  },
+  "learnable": {
+    "10": {
+      "experiment": "unnamed_experiment",
+      "fisher_matrix": [
+        [
+          743.8749389648438,
+          459.53826904296875
+        ],
+        [
+          459.53826904296875,
+          1353.2293701171875
+        ]
+      ],
+      "log_det_fisher": 13.58667278289795,
+      "constraints": [
+        0.04124554991722107,
+        0.030580271035432816
+      ],
+      "is_gaussian": true,
+      "analysis": {
+        "theta_fid": [
+          1.0,
+          0.20000000298023224
+        ],
+        "delta_theta": [
+          0.05000000074505806,
+          0.009999999776482582
+        ],
+        "n_s": 40000,
+        "n_d": 40000
+      },
+      "metadata": {
+        "components": {
+          "simulator": "<topofisher.simulators.noisy_ring.NoisyRingSimulator object at 0x146e08accc50>",
+          "filtration": "LearnablePointFiltration(\n  (mlp): VertexFiltrationMLP(\n    (network): Sequential(\n      (0): Linear(in_features=10, out_features=40, bias=True)\n      (1): LeakyReLU(negative_slope=0.01)\n      (2): Linear(in_features=40, out_features=20, bias=True)\n      (3): LeakyReLU(negative_slope=0.01)\n      (4): Linear(in_features=20, out_features=1, bias=True)\n    )\n  )\n)",
+          "vectorization": "CombinedVectorization(layers=[TopKLayer(k=103 (auto-selected), pad_value=0.0), TopKLayer(k=6 (auto-selected), pad_value=0.0)])",
+          "compression": "MOPEDCompression(train_frac=0.5, clean_data=True, reg=1e-08)",
+          "fisher_analyzer": "FisherAnalyzer(clean_data=True)"
+        }
+      },
+      "exp_name": "k10_lr1e-2_h4k-2k"
+    },
+    "20": {
+      "experiment": "unnamed_experiment",
+      "fisher_matrix": [
+        [
+          963.9190673828125,
+          561.6566772460938
+        ],
+        [
+          561.6566772460938,
+          1441.6832275390625
+        ]
+      ],
+      "log_det_fisher": 13.887093544006348,
+      "constraints": [
+        0.036634545773267746,
+        0.02995547093451023
+      ],
+      "is_gaussian": true,
+      "analysis": {
+        "theta_fid": [
+          1.0,
+          0.20000000298023224
+        ],
+        "delta_theta": [
+          0.05000000074505806,
+          0.009999999776482582
+        ],
+        "n_s": 40000,
+        "n_d": 40000
+      },
+      "metadata": {
+        "components": {
+          "simulator": "<topofisher.simulators.noisy_ring.NoisyRingSimulator object at 0x153a5cecb790>",
+          "filtration": "LearnablePointFiltration(\n  (mlp): VertexFiltrationMLP(\n    (network): Sequential(\n      (0): Linear(in_features=20, out_features=80, bias=True)\n      (1): LeakyReLU(negative_slope=0.01)\n      (2): Linear(in_features=80, out_features=40, bias=True)\n      (3): LeakyReLU(negative_slope=0.01)\n      (4): Linear(in_features=40, out_features=1, bias=True)\n    )\n  )\n)",
+          "vectorization": "CombinedVectorization(layers=[TopKLayer(k=103 (auto-selected), pad_value=0.0), TopKLayer(k=5 (auto-selected), pad_value=0.0)])",
+          "compression": "MOPEDCompression(train_frac=0.5, clean_data=True, reg=1e-08)",
+          "fisher_analyzer": "FisherAnalyzer(clean_data=True)"
+        }
+      },
+      "exp_name": "k20_lr1e-2_h4k-2k"
+    },
+    "40": {
+      "experiment": "unnamed_experiment",
+      "fisher_matrix": [
+        [
+          1101.9888916015625,
+          441.0165100097656
+        ],
+        [
+          441.01654052734375,
+          1235.515625
+        ]
+      ],
+      "log_det_fisher": 13.969970703125,
+      "constraints": [
+        0.03253743425011635,
+        0.030728954821825027
+      ],
+      "is_gaussian": true,
+      "analysis": {
+        "theta_fid": [
+          1.0,
+          0.20000000298023224
+        ],
+        "delta_theta": [
+          0.05000000074505806,
+          0.009999999776482582
+        ],
+        "n_s": 40000,
+        "n_d": 40000
+      },
+      "metadata": {
+        "components": {
+          "simulator": "<topofisher.simulators.noisy_ring.NoisyRingSimulator object at 0x151597d10c50>",
+          "filtration": "LearnablePointFiltration(\n  (mlp): VertexFiltrationMLP(\n    (network): Sequential(\n      (0): Linear(in_features=40, out_features=40, bias=True)\n      (1): LeakyReLU(negative_slope=0.01)\n      (2): Linear(in_features=40, out_features=1, bias=True)\n    )\n  )\n)",
+          "vectorization": "CombinedVectorization(layers=[TopKLayer(k=103 (auto-selected), pad_value=0.0), TopKLayer(k=5 (auto-selected), pad_value=0.0)])",
+          "compression": "MOPEDCompression(train_frac=0.5, clean_data=True, reg=1e-08)",
+          "fisher_analyzer": "FisherAnalyzer(clean_data=True)"
+        }
+      },
+      "exp_name": "k40_lr5e-3_hk"
+    }
+  }
+}
