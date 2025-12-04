@@ -1,0 +1,12 @@
+n_epochs: 1000
+lr: 1.0e-3
+batch_size: 500
+weight_decay: 1.0e-4
+train_frac: 0.5
+val_frac: 0.25
+validate_every: 10
+verbose: true
+patience: 50
+min_delta: 1.0e-6
+lambda_k: 0.0  # Kurtosis regularization (0 = disabled)
+lambda_s: 0.0  # Skewness regularization (0 = disabled)

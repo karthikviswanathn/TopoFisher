@@ -1,3 +1,4 @@
+"""Fisher information analysis."""
 from .analyzer import FisherAnalyzer
 
-__all__ = ["FisherAnalyzer"]
+__all__ = ['FisherAnalyzer']

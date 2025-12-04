@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import gudhi
+from tqdm import tqdm
 
 
 class CubicalLayer(nn.Module):
@@ -20,7 +21,7 @@ class CubicalLayer(nn.Module):
         self,
         homology_dimensions: List[int],
         min_persistence: Optional[List[float]] = None,
-        homology_coeff_field: int = 11
+        show_progress: bool = False
     ):
         """
         Initialize cubical complex layer.
@@ -29,15 +30,29 @@ class CubicalLayer(nn.Module):
             homology_dimensions: List of homology dimensions to compute (e.g., [0, 1])
             min_persistence: Minimum persistence threshold for each dimension
                            (default: 0 for all dimensions)
-            homology_coeff_field: Homology field coefficient (must be prime, max 46337)
+            show_progress: Whether to show progress bar during computation (default: False)
         """
         super().__init__()
         self.dimensions = homology_dimensions
         self.min_persistence = min_persistence if min_persistence is not None else [0.0] * len(self.dimensions)
-        self.hcf = homology_coeff_field
+        self.show_progress = show_progress
 
         assert len(self.min_persistence) == len(self.dimensions), \
             "min_persistence must have same length as homology_dimensions"
+
+    def __repr__(self):
+        """String representation showing configuration."""
+        if all(p == 0.0 for p in self.min_persistence):
+            return f"CubicalLayer(homology_dimensions={self.dimensions})"
+        else:
+            return f"CubicalLayer(homology_dimensions={self.dimensions}, min_persistence={self.min_persistence})"
+
+    def get_config(self) -> dict:
+        """Return configuration dictionary for serialization."""
+        return {
+            'homology_dimensions': self.dimensions,
+            'min_persistence': self.min_persistence,
+        }
 
     def forward(self, X: torch.Tensor) -> List[List[torch.Tensor]]:
         """
@@ -72,7 +87,8 @@ class CubicalLayer(nn.Module):
         all_diagrams = [[] for _ in self.dimensions]
 
         # Compute diagrams for each sample
-        for i in range(n_samples):
+        iterator = tqdm(range(n_samples), desc="Computing Cubical Complex") if self.show_progress else range(n_samples)
+        for i in iterator:
             sample_diagrams = self._compute_single_diagram(X[i], device)
 
             # Organize by homology dimension
@@ -111,7 +127,7 @@ class CubicalLayer(nn.Module):
         )
 
         # Compute persistence
-        cubical_complex.compute_persistence(homology_coeff_field=self.hcf)
+        cubical_complex.compute_persistence()
 
         # Extract diagrams for each homology dimension
         diagrams = []

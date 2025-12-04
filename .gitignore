@@ -26,5 +26,25 @@ venv/
 *.pt
 data/
 outputs/
+external/
 
 allocate_node.sh
+
+logs/
+.*
+
+CLAUDE.md
+scripts/
+CODE_REVIEW.mdplots/
+
+plots/
+ai-code/
+
+scratchpad.txt
+*train_mma.py
+*mma_kernel_gpu.py
+
+# Old codebase (for reference during redesign)
+topofisher_old/
+
+experiments/*

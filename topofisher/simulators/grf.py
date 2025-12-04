@@ -10,7 +10,7 @@ try:
 except ImportError:
     raise ImportError("powerbox is required for GRF simulation. Install with: pip install powerbox")
 
-from ..core.interfaces import Simulator
+from . import Simulator
 
 
 class GRFSimulator(Simulator):
@@ -25,7 +25,7 @@ class GRFSimulator(Simulator):
         self,
         N: int,
         dim: int = 2,
-        boxlength: float = 1.0,
+        boxlength: float = None,
         ensure_physical: bool = False,
         vol_normalised_power: bool = True,
         device: str = "cpu"
@@ -36,17 +36,34 @@ class GRFSimulator(Simulator):
         Args:
             N: Number of grid points along each dimension
             dim: Number of dimensions (2 or 3)
-            boxlength: Physical size of the simulation box
+            boxlength: Physical size of the simulation box (default: N)
             ensure_physical: Whether to ensure physicality of the field
             vol_normalised_power: Whether power spectrum is volume normalized
             device: Device to place generated tensors on ('cpu' or 'cuda')
         """
         self.N = N
         self.dim = dim
-        self.boxlength = boxlength
+        # TODO: Accommodate other boxlength values. Currently fixed to N for consistency
+        # between real-space and Fourier-space sampling (dx = dk = 1).
+        self.boxlength = float(N) if boxlength is None else boxlength
         self.ensure_physical = ensure_physical
         self.vol_normalised_power = vol_normalised_power
         self.device = device
+
+    def __repr__(self):
+        """String representation showing configuration."""
+        return (f"GRFSimulator(N={self.N}, dim={self.dim}, "
+                f"boxlength={self.boxlength}, device='{self.device}')")
+
+    def get_config(self) -> dict:
+        """Return configuration dictionary for serialization."""
+        return {
+            'N': self.N,
+            'dim': self.dim,
+            'boxlength': self.boxlength,
+            'ensure_physical': self.ensure_physical,
+            'vol_normalised_power': self.vol_normalised_power,
+        }
 
     def generate(
         self,
@@ -57,6 +74,8 @@ class GRFSimulator(Simulator):
         """
         Generate GRF samples.
 
+        Calls parent class generate() and moves result to device.
+
         Args:
             theta: Parameter tensor [A, B] where A is amplitude, B is slope
             n_samples: Number of GRF realizations to generate
@@ -65,38 +84,44 @@ class GRFSimulator(Simulator):
         Returns:
             Tensor of shape (n_samples, N, N) for 2D or (n_samples, N, N, N) for 3D
         """
-        # Extract parameters
+        # Validate parameters
         if theta.numel() != 2:
             raise ValueError(f"Expected 2 parameters [A, B], got {theta.numel()}")
 
+        # Call parent class generate (handles seeding, looping, stacking)
+        result = super().generate(theta, n_samples, seed)
+
+        # Move to device
+        return result.to(self.device)
+
+    def generate_single(self, theta: torch.Tensor, seed: int):
+        """
+        Generate a single GRF realization.
+
+        Args:
+            theta: Parameter tensor [A, B] where A is amplitude, B is slope
+            seed: Random seed for this sample
+
+        Returns:
+            Numpy array of shape (N, N) for 2D or (N, N, N) for 3D
+        """
+        # Extract parameters
         A = float(theta[0])
         B = float(theta[1])
 
-        # Set seed if provided
-        if seed is not None:
-            np.random.seed(seed)
+        # Generate single GRF
+        pb = pbox.PowerBox(
+            N=self.N,
+            dim=self.dim,
+            pk=lambda k: A * k**(-B),
+            boxlength=self.boxlength,
+            vol_normalised_power=self.vol_normalised_power,
+            ensure_physical=self.ensure_physical,
+            seed=seed
+        )
+        grf = pb.delta_x()  # Real space field (numpy array)
 
-        # Generate individual seeds for each sample
-        seeds = np.random.randint(1e7, size=n_samples)
-
-        # Generate GRF samples
-        grfs = []
-        for i in range(n_samples):
-            pb = pbox.PowerBox(
-                N=self.N,
-                dim=self.dim,
-                pk=lambda k: A * k**(-B),
-                boxlength=self.boxlength,
-                vol_normalised_power=self.vol_normalised_power,
-                ensure_physical=self.ensure_physical,
-                seed=int(seeds[i])
-            )
-            grf = pb.delta_x()  # Real space field
-            grfs.append(grf)
-
-        # Convert to torch tensor
-        grfs_array = np.array(grfs)
-        return torch.from_numpy(grfs_array).float().to(self.device)
+        return grf
 
     def theoretical_fisher_matrix(self, theta: torch.Tensor) -> torch.Tensor:
         """
@@ -156,4 +181,4 @@ class GRFSimulator(Simulator):
 
         fisher_matrix = np.array([[F_AA, F_AB], [F_BA, F_BB]])
 
-        return torch.from_numpy(fisher_matrix).float().to(self.device)
+        return torch.tensor(fisher_matrix, dtype=torch.float32)

@@ -1,4 +1,13 @@
-from .topk import TopKLayer
-from .combined import CombinedVectorization
+"""Vectorization methods for TopoFisher pipeline."""
 
-__all__ = ["TopKLayer", "CombinedVectorization"]
+from .topk import TopKLayer
+from .persistence_image import PersistenceImageLayer
+from .combined import CombinedVectorization
+from .identity import IdentityVectorization
+
+__all__ = [
+    'TopKLayer',
+    'PersistenceImageLayer',
+    'CombinedVectorization',
+    'IdentityVectorization',
+]

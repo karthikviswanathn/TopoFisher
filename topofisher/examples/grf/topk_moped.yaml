@@ -1,0 +1,23 @@
+# GRF with TopK Vectorization and MOPED Compression
+# Non-trainable pipeline for baseline Fisher information analysis
+
+experiment:
+  name: grf_topk_moped
+  output_dir: experiments/grf/results/topk_moped  # Results saved here
+  description: "Baseline GRF analysis with TopK vectorization and MOPED compression"
+
+analysis: analysis/grf_standard.yaml
+simulator: simulators/grf.yaml
+filtration: filtrations/cubical.yaml
+vectorization: vectorizations/topk_auto.yaml
+
+# Compression configuration
+compression:
+  type: moped                # MOPED optimal compression
+  trainable: false            # MOPED doesn't require training
+  params:
+    train_frac: 0.5           # Fraction for internal train/test split
+    clean_data: true          # Remove zero-variance features
+    reg: 1e-6                 # Regularization for covariance inversion
+
+# No training section needed since no components are trainable

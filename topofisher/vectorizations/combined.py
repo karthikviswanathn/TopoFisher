@@ -25,6 +25,33 @@ class CombinedVectorization(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList(vectorization_layers)
 
+    def __repr__(self):
+        """String representation showing configuration (JSON-friendly single line)."""
+        layer_reprs = [repr(layer) for layer in self.layers]
+        return f"CombinedVectorization(layers=[{', '.join(layer_reprs)}])"
+
+    def fit(self, all_diagrams_list: List[List[List[torch.Tensor]]]):
+        """
+        Fit all vectorization layers on ALL diagrams (fiducial + all derivatives).
+
+        This ensures that hyperparameters (bounds, ranges, etc.) are CONSISTENT
+        across all simulation sets, which is critical for fair Fisher estimation.
+
+        Args:
+            all_diagrams_list: List of diagram sets [fiducial, minus_0, plus_0, minus_1, plus_1, ...]
+                              where each set is List[hom_dim][sample] of diagrams
+        """
+        # For each homology dimension layer
+        for hom_dim_idx, layer in enumerate(self.layers):
+            if hasattr(layer, 'fit'):
+                # Collect ALL data for this homology dimension across ALL sets
+                all_data_for_dim = []
+                for diagrams_set in all_diagrams_list:
+                    all_data_for_dim.extend(diagrams_set[hom_dim_idx])
+
+                # Fit layer on all data
+                layer.fit(all_data_for_dim)
+
     def forward(self, all_diagrams: List[List[torch.Tensor]]) -> torch.Tensor:
         """
         Vectorize diagrams from multiple homology dimensions.

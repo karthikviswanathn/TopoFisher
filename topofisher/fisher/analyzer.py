@@ -1,10 +1,11 @@
 """
 Fisher information analysis.
 """
-from typing import List
+from typing import List, Tuple
 import torch
 import torch.nn as nn
-from ..core.data_types import FisherResult
+from ..config import FisherResult
+from .gaussianity import test_gaussianity
 
 
 class FisherAnalyzer(nn.Module):
@@ -15,24 +16,26 @@ class FisherAnalyzer(nn.Module):
     estimates covariance from simulations at fiducial parameters.
     """
 
-    def __init__(self, clean_data: bool = True, use_moped: bool = False, moped_compress_frac: float = 0.5):
+    def __init__(self, clean_data: bool = True):
         """
         Initialize Fisher analyzer.
 
         Args:
             clean_data: If True, remove zero-variance features
-            use_moped: If True, use MOPED compression before Fisher analysis
-            moped_compress_frac: Fraction of data to use for computing MOPED compression matrix
         """
         super().__init__()
         self.clean_data = clean_data
-        self.use_moped = use_moped
-        self.moped_compress_frac = moped_compress_frac
+
+    def __repr__(self):
+        """String representation showing configuration."""
+        return f"FisherAnalyzer(clean_data={self.clean_data})"
 
     def forward(
         self,
         summaries: List[torch.Tensor],
-        delta_theta: torch.Tensor
+        delta_theta: torch.Tensor,
+        check_gaussianity: bool = False,
+        compute_moments: bool = False
     ) -> FisherResult:
         """
         Compute Fisher information from summaries.
@@ -43,6 +46,8 @@ class FisherAnalyzer(nn.Module):
                 summaries[1:]: shape (n_d, n_features) at perturbed values
                     Ordered as [..., theta_minus_i, theta_plus_i, ...]
             delta_theta: Tensor of shape (n_params,) with step sizes
+            check_gaussianity: If True, run Gaussianity test on summaries
+            compute_moments: If True, compute skewness/kurtosis penalties for regularization
 
         Returns:
             FisherResult containing Fisher matrix and related quantities
@@ -51,20 +56,34 @@ class FisherAnalyzer(nn.Module):
         if self.clean_data:
             summaries = self._clean_summaries(summaries)
 
-        # Compute full Fisher matrix
+        # Compute Fisher matrix
         fisher_matrix, inv_fisher, mean_derivatives, C, log_det_fisher, constraints = \
             self._compute_fisher(summaries, delta_theta)
 
-        # Compute MOPED Fisher matrix if requested
-        fisher_matrix_moped = None
-        inverse_fisher_moped = None
-        log_det_fisher_moped = None
-        constraints_moped = None
+        # Gaussianity check
+        is_gaussian = None
+        gaussianity_details = None
+        if check_gaussianity:
+            results, is_gaussian = test_gaussianity(summaries, verbose=False)
+            # Compute summary statistics for details
+            n_datasets = len(results)
+            n_datasets_all_gaussian = sum(1 for r in results.values() if r['all_gaussian'])
+            total_tests = sum(r['n_total'] for r in results.values())
+            total_passed = sum(r['n_gaussian'] for r in results.values())
+            gaussianity_details = {
+                'n_datasets': n_datasets,
+                'n_datasets_all_gaussian': n_datasets_all_gaussian,
+                'total_tests': total_tests,
+                'total_passed': total_passed,
+                'alpha': 0.05,
+                'test': 'Kolmogorov-Smirnov'
+            }
 
-        if self.use_moped:
-            summaries_moped = self._apply_moped_compression(summaries, delta_theta)
-            fisher_matrix_moped, inverse_fisher_moped, _, _, log_det_fisher_moped, constraints_moped = \
-                self._compute_fisher(summaries_moped, delta_theta)
+        # Compute moment penalties for regularization
+        skewness_penalty = None
+        kurtosis_penalty = None
+        if compute_moments:
+            skewness_penalty, kurtosis_penalty = self.compute_gaussianity_penalty(summaries)
 
         return FisherResult(
             fisher_matrix=fisher_matrix,
@@ -73,10 +92,10 @@ class FisherAnalyzer(nn.Module):
             covariance=C,
             log_det_fisher=log_det_fisher,
             constraints=constraints,
-            fisher_matrix_moped=fisher_matrix_moped,
-            inverse_fisher_moped=inverse_fisher_moped,
-            log_det_fisher_moped=log_det_fisher_moped,
-            constraints_moped=constraints_moped
+            is_gaussian=is_gaussian,
+            gaussianity_details=gaussianity_details,
+            skewness_penalty=skewness_penalty,
+            kurtosis_penalty=kurtosis_penalty
         )
 
     def _compute_fisher(
@@ -181,6 +200,11 @@ class FisherAnalyzer(nn.Module):
             Tensor of shape (n_params, n_d, n_features)
         """
         n_params = len(delta_theta)
+
+        # Validate input structure: should have pairs (minus, plus) for each parameter
+        assert len(perturbed_vecs) == 2 * n_params, \
+            f"Expected {2 * n_params} perturbed vectors (2 per parameter), got {len(perturbed_vecs)}"
+
         derivatives = []
 
         for i in range(n_params):
@@ -193,83 +217,41 @@ class FisherAnalyzer(nn.Module):
 
         return torch.stack(derivatives)  # (n_params, n_d, n_features)
 
-    def _apply_moped_compression(
+    def compute_gaussianity_penalty(
         self,
-        summaries: List[torch.Tensor],
-        delta_theta: torch.Tensor
-    ) -> List[torch.Tensor]:
+        summaries: List[torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Apply MOPED compression to summaries.
+        Compute skewness and kurtosis penalties for Gaussianity regularization.
+
+        - Skewness: E[(X - μ)³] / σ³ (should be 0 for Gaussian)
+        - Excess kurtosis: E[(X - μ)⁴] / σ⁴ - 3 (should be 0 for Gaussian)
 
         Args:
-            summaries: List of summary tensors
-            delta_theta: Step sizes for derivatives
+            summaries: List of summary tensors [fid, minus_0, plus_0, ...]
+                Each tensor shape: (n_samples, n_features)
 
         Returns:
-            Compressed summaries
+            (skewness_penalty, kurtosis_penalty): Mean of squared deviations
         """
-        # Split data for compression
-        vecs_cov = summaries[0]
-        n_s = vecs_cov.shape[0]
-        n_comp = int(self.moped_compress_frac * n_s)
+        skew_penalty = torch.tensor(0.0, device=summaries[0].device)
+        kurt_penalty = torch.tensor(0.0, device=summaries[0].device)
+        n_summaries = 0
 
-        # Use first fraction for computing compression matrix
-        comp_cov = vecs_cov[:n_comp]
-        comp_ders = [s[:int(self.moped_compress_frac * s.shape[0])] for s in summaries[1:]]
+        for s in summaries:
+            # Standardize to mean=0, std=1
+            mean = s.mean(dim=0, keepdim=True)
+            std = s.std(dim=0, keepdim=True) + 1e-8
+            s_norm = (s - mean) / std
 
-        # Compute derivatives for compression
-        derivatives = self._compute_derivatives(comp_ders, delta_theta)
-        mean_derivatives = derivatives.mean(dim=1)  # (n_params, n_features)
+            # Skewness: E[(X - μ)^3] / σ^3
+            skewness = torch.mean(s_norm ** 3, dim=0)
+            skew_penalty = skew_penalty + torch.mean(skewness ** 2)
 
-        # Compute covariance
-        C = self._compute_covariance(comp_cov)
+            # Excess kurtosis: E[(X - μ)^4] / σ^4 - 3
+            kurtosis = torch.mean(s_norm ** 4, dim=0) - 3.0
+            kurt_penalty = kurt_penalty + torch.mean(kurtosis ** 2)
 
-        # MOPED compression: B = C^{-1} dμ
-        compression_matrix = torch.linalg.solve(C, mean_derivatives.T)  # (n_features, n_params)
+            n_summaries += 1
 
-        # Apply compression to all summaries
-        compressed_summaries = [s @ compression_matrix for s in summaries]
-
-        return compressed_summaries
-
-    def compute_moped_compression(
-        self,
-        summaries: List[torch.Tensor],
-        delta_theta: torch.Tensor,
-        compress_frac: float = 0.5
-    ) -> torch.Tensor:
-        """
-        Compute MOPED (Multiple Optimized Parameter Estimation and Data compression) compression matrix.
-
-        Args:
-            summaries: List of summary tensors (same format as forward())
-            delta_theta: Step sizes for derivatives
-            compress_frac: Fraction of data to use for computing compression (rest for Fisher)
-
-        Returns:
-            Compression matrix of shape (n_features, n_params)
-        """
-        # Clean data if requested
-        if self.clean_data:
-            summaries = self._clean_summaries(summaries)
-
-        # Split data for compression
-        vecs_cov = summaries[0]
-        n_s = vecs_cov.shape[0]
-        n_comp = int(compress_frac * n_s)
-
-        # Use first fraction for computing compression matrix
-        comp_cov = vecs_cov[:n_comp]
-        comp_ders = [s[:int(compress_frac * s.shape[0])] for s in summaries[1:]]
-
-        # Compute derivatives for compression
-        derivatives = self._compute_derivatives(comp_ders, delta_theta)
-        mean_derivatives = derivatives.mean(dim=1)  # (n_params, n_features)
-
-        # Compute covariance
-        C = self._compute_covariance(comp_cov)
-
-        # MOPED compression: B = C^{-1} dμ
-        compression_matrix = torch.linalg.solve(C, mean_derivatives.T)  # (n_features, n_params)
-
-        return compression_matrix
+        return skew_penalty / n_summaries, kurt_penalty / n_summaries

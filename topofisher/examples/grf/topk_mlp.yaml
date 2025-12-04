@@ -1,0 +1,27 @@
+# GRF with TopK Vectorization and MLP Compression
+# Trainable pipeline with learned MLP compression
+
+experiment:
+  name: grf_topk_mlp
+  output_dir: experiments/grf/results/topk_mlp
+  description: "GRF analysis with TopK auto-k vectorization and learned MLP compression"
+
+# Use modular component files for clean configuration
+analysis: analysis/grf_standard.yaml
+simulator: simulators/grf.yaml
+filtration: filtrations/cubical.yaml
+vectorization: vectorizations/topk_auto.yaml
+compression: compressions/mlp.yaml
+
+# Training configuration for MLP
+training:
+  n_epochs: 1000
+  lr: 1.0e-3
+  batch_size: 500
+  weight_decay: 1.0e-4
+  train_frac: 0.5
+  val_frac: 0.25
+  validate_every: 10
+  verbose: true
+  patience: 50
+  min_delta: 1.0e-6
