@@ -5,6 +5,7 @@ from .alpha import AlphaComplexLayer
 from .identity import IdentityFiltration
 from .learnable import LearnableFiltration
 from .learnable_point import LearnablePointFiltration, VertexFiltrationMLP
+from .alpha_dtm import AlphaDTMFiltration
 
 __all__ = [
     'CubicalLayer',
@@ -13,4 +14,5 @@ __all__ = [
     'LearnableFiltration',
     'LearnablePointFiltration',
     'VertexFiltrationMLP',
+    'AlphaDTMFiltration',
 ]

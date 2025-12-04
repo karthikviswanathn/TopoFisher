@@ -1,0 +1,37 @@
+# Alpha DTM (Distance to Measure) Filtration on Noisy Ring
+#
+# Non-learnable baseline for benchmarking against learnable filtration.
+# Uses fixed DTM formula: vfilt = sqrt(mean(knn_distances^2))
+#
+# Pipeline:
+#   NoisyRingSimulator → AlphaDTMFiltration → TopK → MOPED → Fisher
+#
+# Usage:
+#   python run_pipeline.py topofisher/examples/circle/circle_dtm.yaml --alpha-k 20
+#   python run_pipeline.py topofisher/examples/circle/circle_dtm.yaml --alpha-k 40
+#   python run_pipeline.py topofisher/examples/circle/circle_dtm.yaml --alpha-k 80
+
+simulator: simulators/noisy_ring.yaml
+
+filtration:
+  type: alpha_dtm
+  trainable: false  # DTM is not trainable
+  params:
+    k: 10                      # Number of nearest neighbors (override with --alpha-k)
+    homology_dimensions: [0, 1]
+    complex_type: alpha
+    p: 1.0
+
+vectorization: vectorizations/topk_auto.yaml
+
+compression: compressions/moped.yaml
+
+analysis:
+  theta_fid: [1.0, 0.2]       # [radius_mean, radius_std]
+  delta_theta: [0.05, 0.01]
+  n_s: 10000
+  n_d: 10000
+  seed_cov: 42
+  seed_ders: [43, 44]
+
+# No training config needed - DTM is not trainable

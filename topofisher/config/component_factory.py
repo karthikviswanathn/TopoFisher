@@ -144,6 +144,20 @@ def create_learnable_point_filtration(params: Dict[str, Any], trainable: bool = 
     return LearnablePointFiltration(**params)
 
 
+@register_filtration('alpha_dtm')
+def create_alpha_dtm_filtration(params: Dict[str, Any], trainable: bool = False):
+    """Create Alpha DTM (Distance to Measure) filtration for point clouds.
+
+    This is a non-learnable baseline using the fixed DTM formula:
+    vfilt = sqrt(mean(knn_distances^2))
+    """
+    from ..filtrations import AlphaDTMFiltration
+    if trainable:
+        raise ValueError("Alpha DTM filtration does not support training. "
+                        "Use 'learnable_point' for trainable filtration.")
+    return AlphaDTMFiltration(**params)
+
+
 # ============================================================================
 # Vectorization Factories
 # ============================================================================
