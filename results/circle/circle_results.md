@@ -30,5 +30,6 @@
 ## Files
 
 - `results.json` - Raw results data
+- `fisher_contours.png` - Fisher confidence ellipses for k=40 (Theoretical, DTM, Learnable)
 - `filtration_comparison.png` - Visualization comparing DTM, Learned, and Random filtrations
 - `validation_curve_k40.png` - Training convergence for k=40 learnable filtration
