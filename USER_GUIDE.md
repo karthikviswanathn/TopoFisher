@@ -38,9 +38,11 @@ Simulator → Filtration → Vectorization → Compression → Fisher Analyzer
 
 ### YAML Structure
 
+#### Non-Learnable Pipeline (no training required)
+
 ```yaml
 experiment:
-  name: my_experiment
+  name: grf_topk_moped
   output_dir: experiments/output
 
 analysis:
@@ -60,13 +62,49 @@ compression:
   trainable: false
   params:
     reg: 1.0e-6
+```
 
-# For learnable components only
-training:
+Run with: `python run_pipeline.py config.yaml`
+
+#### Learnable Pipeline (requires training)
+
+```yaml
+experiment:
+  name: grf_learnable_filtration
+  output_dir: experiments/output
+
+analysis:
+  theta_fid: [1.0, 2.0]
+  delta_theta: [0.1, 0.2]
+  n_s: 40000                 # More samples recommended for training
+  n_d: 40000
+  seed_cov: 42
+  seed_ders: [43, 44]
+
+simulator: simulators/grf.yaml
+
+filtration:
+  type: learnable
+  trainable: true            # Mark as trainable
+  params:
+    homology_dimensions: [0, 1]
+    hidden_channels: [32, 64, 32]
+
+vectorization: vectorizations/topk_auto.yaml
+compression: compressions/moped.yaml
+
+training:                    # Required when trainable: true
   n_epochs: 1000
   lr: 0.001
   batch_size: 500
+  train_frac: 0.875
+  val_frac: 0.0625
+  validate_every: 10
+  lambda_k: 0.0              # Kurtosis regularization (default: 0.0)
+  lambda_s: 0.0              # Skewness regularization (default: 0.0)
 ```
+
+Run with: `python run_pipeline.py config.yaml --train`
 
 ### Command-Line Overrides
 
@@ -119,7 +157,7 @@ training:
 
 Run with: `python run_pipeline.py config.yaml --train`
 
-## Python API
+## Output
 
 ```python
 from topofisher.config import load_pipeline_config, create_pipeline_from_config
@@ -136,8 +174,6 @@ print(f"Fisher Matrix: {result.fisher_matrix}")
 print(f"log|F|: {result.log_det_fisher}")
 print(f"Constraints: {result.constraints}")
 ```
-
-## Output
 
 Results include:
 - **Fisher Matrix**: Information about parameter constraints
