@@ -270,6 +270,79 @@ class MySimulator(Simulator):
         return data  # numpy array
 ```
 
+### Add a New Filtration
+
+Create `topofisher/filtrations/my_filtration.py`:
+
+```python
+import torch
+import torch.nn as nn
+from typing import List
+
+class MyFiltration(nn.Module):
+    def __init__(self, homology_dimensions: List[int], my_param: float = 1.0):
+        super().__init__()
+        self.dimensions = homology_dimensions
+        self.my_param = my_param
+
+    def forward(self, data: torch.Tensor) -> List[List[torch.Tensor]]:
+        """
+        Args:
+            data: Input tensor of shape (n_samples, ...)
+
+        Returns:
+            List[List[Tensor]]: Outer list per homology dimension,
+                inner list per sample. Each tensor shape (n_points, 2)
+                with (birth, death) pairs.
+        """
+        n_samples = data.shape[0]
+        all_diagrams = [[] for _ in self.dimensions]
+
+        for i in range(n_samples):
+            for dim_idx, dim in enumerate(self.dimensions):
+                diagram = self._compute_diagram(data[i], dim)
+                all_diagrams[dim_idx].append(diagram)
+
+        return all_diagrams
+```
+
+### Add a New Vectorization
+
+Create `topofisher/vectorizations/my_vectorization.py`:
+
+```python
+import torch
+import torch.nn as nn
+from typing import List
+
+class MyVectorization(nn.Module):
+    def __init__(self, output_dim: int = 50):
+        super().__init__()
+        self.output_dim = output_dim
+        self.n_features = output_dim  # Required attribute
+
+    def fit(self, diagrams: List[torch.Tensor]):
+        """Optional: compute data-dependent parameters."""
+        pass
+
+    def forward(self, diagrams: List[torch.Tensor]) -> torch.Tensor:
+        """
+        Args:
+            diagrams: List of diagrams, each shape (n_points, 2)
+
+        Returns:
+            Tensor of shape (len(diagrams), n_features)
+        """
+        features = []
+        for dgm in diagrams:
+            if dgm.shape[0] == 0:
+                vec = torch.zeros(self.output_dim, device=dgm.device)
+            else:
+                vec = self._vectorize(dgm)
+            features.append(vec)
+        return torch.stack(features)
+```
+
 ### Add a New Compression
 
 ```python
@@ -279,6 +352,32 @@ class MyCompression(Compression):
     def forward(self, summaries):
         # summaries: [fid, minus_0, plus_0, minus_1, plus_1, ...]
         return [self.compress_fn(s) for s in summaries]
+```
+
+### Registering Components for YAML
+
+Add to `topofisher/config/component_factory.py`:
+
+```python
+@register_filtration('my_filtration')
+def create_my_filtration(params: Dict[str, Any], trainable: bool = False):
+    from ..filtrations.my_filtration import MyFiltration
+    return MyFiltration(**params)
+
+@register_vectorization('my_vectorization')
+def create_my_vectorization(params: Dict[str, Any], trainable: bool = False):
+    from ..vectorizations.my_vectorization import MyVectorization
+    return MyVectorization(**params)
+```
+
+Then use in YAML:
+
+```yaml
+filtration:
+  type: my_filtration
+  params:
+    homology_dimensions: [0, 1]
+    my_param: 2.0
 ```
 
 
