@@ -84,8 +84,8 @@ python run_pipeline.py config.yaml --train --lr 0.0001 --n-epochs 500
 - `cubical`: For gridded data/images
 - `alpha`: Alpha complex for point clouds
 - `alpha_dtm`: Distance-to-measure alpha complex
-- `learnable`: CNN-based learnable filtration
-- `learnable_point`: Learnable vertex filtration for point clouds
+- `learnable`: CNN-based learnable filtration on cubical complexes
+- `learnable_point`: Learnable vertex filtration for point clouds on Alpha complexes
 
 ### Vectorizations
 - `topk`: Select k most persistent features
@@ -93,10 +93,10 @@ python run_pipeline.py config.yaml --train --lr 0.0001 --n-epochs 500
 - `combined`: Combine multiple vectorizations
 
 ### Compressions
-- `moped`: Analytical optimal compression (recommended)
+- `moped`: Analytical optimal compression
 - `identity`: No compression
-- `mlp`: Learned MLP compression
-- `cnn`: Learned CNN compression
+- `mlp`: Learned MLP compression (works well with topk)
+- `cnn`: Learned CNN compression (works well with persistence images)
 
 ## Training
 
@@ -128,7 +128,7 @@ from topofisher.config import load_pipeline_config, create_pipeline_from_config
 config = load_pipeline_config("config.yaml")
 pipeline, config = create_pipeline_from_config(config)
 
-# Run
+# Run (just a forward pass, i.e., after training)
 result = pipeline(config.analysis)
 
 # Access results
