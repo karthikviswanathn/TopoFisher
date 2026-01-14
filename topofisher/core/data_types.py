@@ -45,3 +45,15 @@ class FisherResult:
     fractional_bias: Optional[torch.Tensor] = None  # Fractional bias
     is_gaussian: bool = True         # Whether compressed features pass Gaussianity test
     gaussianity_details: Optional[Dict[str, Any]] = None  # Detailed Gaussianity test results
+
+    def print_gaussianity(self):
+        """Print Gaussianity test results."""
+        print(f"\nGaussianity check: {'PASSED ✓' if self.is_gaussian else 'FAILED ✗'}")
+        if self.gaussianity_details:
+            for key, value in self.gaussianity_details.items():
+                if isinstance(value, dict):
+                    print(f"  {key}:")
+                    for k, v in value.items():
+                        print(f"    {k}: {v}")
+                else:
+                    print(f"  {key}: {value}")
