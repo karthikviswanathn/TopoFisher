@@ -22,7 +22,7 @@ from typing import List, Dict, Any, Optional
 from topofisher.simulators import GRFSimulator
 from topofisher.filtrations.learnable_mma import LearnableMMAFiltration
 from topofisher.vectorizations.mma_topk import MMATopKLayer
-from topofisher.vectorizations.mma_kernel import MMAExponentialLayer
+from topofisher.vectorizations.mma_kernel import MMAExponentialLayer, MMALinearLayer, MMAGaussianLayer
 from topofisher.vectorizations.combined import CombinedVectorization
 from topofisher.compressions.moped import MOPEDCompression
 from topofisher.fisher.analyzer import FisherAnalyzer
@@ -318,6 +318,7 @@ def main():
     parser.add_argument('--k1', type=int, default=25, help='TopK for H1')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--save', type=str, default=None, help='Save model to path')
+    parser.add_argument('--vectorization', type=str, default='topk', choices=['topk', 'exponential', 'linear', 'gaussian'], help='Vectorization type')
     args = parser.parse_args()
     
     # Setup
@@ -338,10 +339,16 @@ def main():
         activation='relu'
     )
     
-    vectorization = CombinedVectorization([
-        MMATopKLayer(k=args.k0, homology_dimension=0),
-        MMATopKLayer(k=args.k1, homology_dimension=1)
-    ])
+    if args.vectorization == 'topk':
+        vectorization = CombinedVectorization([
+            MMATopKLayer(k=args.k0, homology_dimension=0),
+            MMATopKLayer(k=args.k1, homology_dimension=1)
+        ])
+    else:
+        vectorization = CombinedVectorization([
+            MMAExponentialLayer(resolution=15, bandwidth=0.5, homology_dimension=0),
+            MMAExponentialLayer(resolution=15, bandwidth=0.5, homology_dimension=1)
+        ])
     
     compression = MOPEDCompression(train_frac=0.5, reg=1e-6)
     fisher_analyzer = FisherAnalyzer(clean_data=True)
