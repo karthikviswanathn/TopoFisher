@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import multipers as mp
+from tqdm import tqdm
 
 
 class MMALayer(nn.Module):
@@ -84,9 +85,9 @@ class MMALayer(nn.Module):
         field_cpu = field.detach().cpu()
         gradient_cpu = gradient.detach().cpu()
 
-        # Compute MMA for each sample
+        # Compute MMA for each sample with progress bar
         mma_modules = []
-        for i in range(n_samples):
+        for i in tqdm(range(n_samples), desc="MMA filtration", leave=False):
             mma_obj = self._compute_single_mma(field_cpu[i], gradient_cpu[i])
             mma_modules.append(mma_obj)
 

@@ -67,8 +67,12 @@ class FisherPipeline(nn.Module):
 
         # Step 2: Compute filtration + vectorize
         all_summaries = []
+        n_sets = len(all_data)
+        set_names = self._get_set_names(config)
         
-        for data in all_data:
+        for set_idx, data in enumerate(all_data):
+            print(f"\nProcessing set {set_idx + 1}/{n_sets}: {set_names[set_idx]}")
+            
             # Check if filtration needs gradient (MMA)
             if hasattr(self.filtration, 'forward') and 'gradient' in self.filtration.forward.__code__.co_varnames:
                 # MMA filtration
@@ -146,6 +150,25 @@ class FisherPipeline(nn.Module):
             FisherResult with Fisher matrix and analysis
         """
         return self.run(config, training_config=None)
+
+    def _get_set_names(self, config: FisherConfig) -> List[str]:
+        """
+        Get descriptive names for each data set.
+        
+        Args:
+            config: Fisher configuration
+            
+        Returns:
+            List of set names like ["fiducial (covariance)", "θ₀⁻", "θ₀⁺", ...]
+        """
+        names = ["fiducial (covariance)"]
+        n_params = len(config.theta_fid)
+        
+        for i in range(n_params):
+            names.append(f"θ{i}⁻ (derivative)")
+            names.append(f"θ{i}⁺ (derivative)")
+        
+        return names
 
     def _generate_data(self, config: FisherConfig) -> List[torch.Tensor]:
         """

@@ -11,6 +11,7 @@ import torch.nn as nn
 import numpy as np
 from typing import List, Literal, Optional
 from multipers import grids
+from tqdm import tqdm
 
 
 # ============= Distance and Weight Functions (GPU-compatible) =============
@@ -221,7 +222,7 @@ class MMAKernelLayer(nn.Module):
         
         device = field.device
         
-        for sample_idx in range(n_samples):
+        for sample_idx in tqdm(range(n_samples), desc=f"{self.kernel.capitalize()} H{self.homology_dimension}", leave=False):
             module = mma_objects[sample_idx].get_module_of_degree(self.homology_dimension)
             
             # Create grid - NO detach() to maintain gradients!
@@ -264,7 +265,7 @@ class MMAKernelLayer(nn.Module):
         n_samples = len(corner_data)
         features = []
 
-        for sample_idx in range(n_samples):
+        for sample_idx in tqdm(range(n_samples), desc=f"{self.kernel.capitalize()} H{self.homology_dimension}", leave=False):
             intervals = corner_data[sample_idx]
             device = intervals[0][0].device if len(intervals) > 0 and intervals[0][0].numel() > 0 else torch.device('cpu')
             vec = self._process_intervals(intervals, device)

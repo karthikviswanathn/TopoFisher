@@ -1,10 +1,11 @@
 """
 MMA Top-K corner vectorization.
-This implementation uses vectorized operations for lexicographic sorting.
+This implementation uses L1 norm ordering to select the most significant corners.
 """
 from typing import List
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 
 class MMATopKLayer(nn.Module):
@@ -13,7 +14,7 @@ class MMATopKLayer(nn.Module):
     
     Takes MMA PyModule objects along with the original field and gradient tensors,
     uses evaluate_mod_in_grid to maintain differentiability, and creates a fixed-size 
-    vector by selecting top-K corners ordered lexicographically.
+    vector by selecting top-K corners ordered by L1 norm (descending).
     
     This version uses vectorized operations instead of Python loops for significant speedup.
     
@@ -54,7 +55,7 @@ class MMATopKLayer(nn.Module):
         
         Returns:
             Tensor of shape (n_samples, k * 2)
-            Returns k corners (2D points), sorted lexicographically
+            Returns k corners (2D points), sorted by L1 norm (descending)
         """
         from multipers.torch.diff_grids import get_grid, evaluate_mod_in_grid
         
@@ -69,7 +70,7 @@ class MMATopKLayer(nn.Module):
         
         device = field.device
         
-        for sample_idx in range(n_samples):
+        for sample_idx in tqdm(range(n_samples), desc=f"TopK H{self.homology_dimension}", leave=False):
             # Get module for this sample and homology dimension
             module = mma_objects[sample_idx].get_module_of_degree(self.homology_dimension)
             
@@ -114,17 +115,10 @@ class MMATopKLayer(nn.Module):
                 # Concatenate all corners
                 all_corners_tensor = torch.cat(all_corners, dim=0)
                 
-                # OPTIMIZED: Vectorized lexicographic sort
-                # Use stable sort twice: first by secondary key (y), then by primary key (x)
-                # This preserves y-ordering within groups of equal x values
-                
-                # Sort by y first (secondary key)
-                indices = torch.argsort(all_corners_tensor[:, 1], stable=True)
-                sorted_by_y = all_corners_tensor[indices]
-                
-                # Then sort by x (primary key) with stable=True to preserve y ordering
-                indices = torch.argsort(sorted_by_y[:, 0], stable=True)
-                corners_sorted = sorted_by_y[indices]
+                # Sort by L1 norm (descending) - largest norm first
+                l1_norms = torch.abs(all_corners_tensor[:, 0]) + torch.abs(all_corners_tensor[:, 1])
+                indices = torch.argsort(l1_norms, descending=True)
+                corners_sorted = all_corners_tensor[indices]
                 
                 # Take top k (or all if less than k)
                 if corners_sorted.shape[0] >= self.k:

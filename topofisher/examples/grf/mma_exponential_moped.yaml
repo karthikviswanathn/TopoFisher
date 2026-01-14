@@ -1,0 +1,49 @@
+# MMA with Exponential Kernel vectorization and MOPED compression
+# For GRF (Gaussian Random Field) analysis
+
+experiment:
+  name: grf_mma_exponential_moped
+  output_dir: experiments/grf/results/mma_exponential_moped
+  description: "GRF analysis with MMA filtration, Exponential kernel vectorization and MOPED compression"
+
+analysis:
+  theta_fid: [1.0, 2.0]
+  delta_theta: [0.1, 0.2]
+  n_s: 10000
+  n_d: 10000
+  seed_cov: 42
+  seed_ders: [43, 44]
+
+simulator:
+  type: grf
+  params:
+    N: 16
+    dim: 2
+
+filtration:
+  type: mma
+  trainable: false
+  params:
+    nlines: 500
+
+vectorization:
+  type: combined
+  trainable: false
+  params:
+    layers:
+      - type: mma_exponential
+        params:
+          resolution: 15
+          bandwidth: 0.5
+          homology_dimension: 0
+      - type: mma_exponential
+        params:
+          resolution: 15
+          bandwidth: 0.5
+          homology_dimension: 1
+
+compression:
+  type: moped
+  trainable: false
+  params:
+    reg: 1.0e-6
