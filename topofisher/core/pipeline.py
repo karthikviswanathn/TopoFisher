@@ -31,7 +31,7 @@ class FisherPipeline(nn.Module):
 
         Args:
             simulator: Simulator module (e.g., GRFSimulator)
-            filtration: Filtration module (e.g., CubicalLayer, MMALayer)
+            filtration: Filtration module (e.g., CubicalLayer, MMALayer, LearnableMMAFiltration)
             vectorization: Vectorization module (e.g., CombinedVectorization)
             compression: Compression module (e.g., MOPEDCompression, IdentityCompression)
             fisher_analyzer: Fisher analyzer module
@@ -73,31 +73,41 @@ class FisherPipeline(nn.Module):
         for set_idx, data in enumerate(all_data):
             print(f"\nProcessing set {set_idx + 1}/{n_sets}: {set_names[set_idx]}")
             
-            # Check if filtration needs gradient (MMA)
-            if hasattr(self.filtration, 'forward') and 'gradient' in self.filtration.forward.__code__.co_varnames:
-                # MMA filtration
+            # Determine filtration type
+            is_learnable_mma = hasattr(self.filtration, 'get_stored_tensors')
+            is_standard_mma = (hasattr(self.filtration, 'forward') and 
+                             'gradient' in self.filtration.forward.__code__.co_varnames and
+                             not is_learnable_mma)
+            
+            if is_learnable_mma:
+                # Learnable MMA: CNN produces second parameter
+                diagrams_or_mma = self.filtration(data)
+                field_for_vec, second_param = self.filtration.get_stored_tensors()
+            elif is_standard_mma:
+                # Standard MMA: gradient magnitude as second parameter
                 gradients = self._compute_gradient_magnitude(data)
                 diagrams_or_mma = self.filtration(data, gradients)
+                field_for_vec = data
+                second_param = gradients
             else:
-                # Standard filtration
+                # Standard 1PH filtration
                 diagrams_or_mma = self.filtration(data)
+                field_for_vec = None
+                second_param = None
             
-            # Check if vectorization needs field and gradient (MMA layers)
-            # Look at first layer in CombinedVectorization
+            # Check if vectorization needs field and second param (MMA layers)
             first_layer = self.vectorization.layers[0] if hasattr(self.vectorization, 'layers') else self.vectorization
             needs_field_grad = hasattr(first_layer, 'homology_dimension')  # MMA layers have this
             
             if needs_field_grad:
                 # MMA vectorization: call each layer separately
-                # MMA returns list of PyModule objects [sample0, sample1, ...]
-                gradients = self._compute_gradient_magnitude(data)
                 all_features = []
                 for layer in self.vectorization.layers:
-                    features = layer(diagrams_or_mma, data, gradients)
+                    features = layer(diagrams_or_mma, field_for_vec, second_param)
                     all_features.append(features)
                 summary = torch.cat(all_features, dim=-1)
             else:
-                # Standard vectorization: already has [dim][sample] structure
+                # Standard vectorization
                 summary = self.vectorization(diagrams_or_mma)
             
             all_summaries.append(summary)

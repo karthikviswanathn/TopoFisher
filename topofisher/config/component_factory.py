@@ -447,3 +447,8 @@ def create_fisher_analyzer(clean_data: bool = True):
     """
     from ..fisher import FisherAnalyzer
     return FisherAnalyzer(clean_data=clean_data)
+
+@register_filtration('learnable_mma')
+def create_learnable_mma_filtration(params, trainable):
+    from ..filtrations.learnable_mma import LearnableMMAFiltration
+    return LearnableMMAFiltration(**params)
